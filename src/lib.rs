@@ -144,7 +144,7 @@ mod tests {
         assert_eq!(
             err.to_string(),
             String::from(
-                r#"FILE_ERROR unable to read env file "none": Os { code: 2, kind: NotFound, message: "No such file or directory" }"#
+                r#"FILE_ERROR unable to read env file "none": Os { code: 2, kind: NotFound, message: "The system cannot find the path specified." }"#
             )
         );
     }
@@ -172,7 +172,7 @@ mod tests {
         assert_eq!(
             err.to_string(),
             String::from(
-                r#"FILE_ERROR unable to read env file "": Os { code: 2, kind: NotFound, message: "No such file or directory" }"#
+                r#"FILE_ERROR unable to read env file "": Os { code: 2, kind: NotFound, message: "The system cannot find the path specified." }"#
             )
         );
     }

@@ -22,8 +22,11 @@ pub type EnvroVars = HashMap<String, String>;
 /// # Examples
 ///
 /// ```
-/// let env_file = env::current_dir().unwrap().join(".env");
-/// let env_vars = load_dotenv(&env_file);
+/// use std::env;
+/// use envro::*;
+///
+/// let env_file = env::current_dir().unwrap().join(".env-sample");
+/// let env_vars = load_dotenv(&env_file).unwrap();
 /// ```
 pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
     let file_content = match fs::read_to_string(file_name) {
@@ -84,8 +87,11 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
 /// # Examples
 ///
 /// ```
-/// let env_file = env::current_dir().unwrap().join(".env");
-/// let env_vars = load_dotenv_in_env_vars(&env_file);
+/// use std::env;
+/// use envro::*;
+//
+/// let env_file = env::current_dir().unwrap().join(".env-sample");
+/// let env_vars = load_dotenv_in_env_vars(&env_file).unwrap();
 /// ```
 pub fn load_dotenv_in_env_vars(file_name: &Path) -> Result<(), EnvroError> {
     let vars = load_dotenv(file_name)?;

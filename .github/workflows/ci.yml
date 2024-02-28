@@ -1,13 +1,6 @@
 name: ci
 
 on:
-  push:
-    paths-ignore:
-      - '*.md'
-      - '*.yaml'
-      - '.gitignore'
-      - 'example/**'
-      - '.cz.toml'
   pull_request:
     paths-ignore:
       - '*.md'

@@ -1,0 +1,23 @@
+name: ci
+
+on:
+  push:
+    paths-ignore:
+      - '*.md'
+  pull_request:
+    paths-ignore:
+      - '*.md'
+      
+jobs:
+  test:
+    runs-on: debian-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Build
+        uses: actions/setup-rust@v1
+
+      - name: Run tests
+        run: |
+          cargo test -- --test-threads=1

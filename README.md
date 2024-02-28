@@ -53,9 +53,9 @@ cargo test -- --test-threads=1
 - add cargo fmt && cargo test on pre commit
 
 - github CI
-  run test
-  publish crate (see https://github.com/googleapis/release-please)
-  handle pre release (-dev, -beta ...)
+  - publish crate - see https://github.com/googleapis/release-please
+    - run cz bump on CI, create release commit, create github release, cargo publish
+      - handle pre release (-dev, -beta ...)
 
 - value validation
 

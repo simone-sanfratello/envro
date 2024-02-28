@@ -45,7 +45,7 @@ cargo test -- --test-threads=1
 
 ## TODO
 
-- github action
+- github action publish
   - publish crate - see https://github.com/googleapis/release-please
     - run cz bump on CI, create release commit, create github release, cargo publish
       - handle pre release (-dev, -beta ...)

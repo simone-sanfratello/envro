@@ -141,9 +141,9 @@ mod tests {
         let r = load_dotenv(Path::new("none"));
         let err = r.unwrap_err();
 
-        assert!(err.to_string().starts_with(String::from(
+        assert!(err.to_string().starts_with(
             r#"FILE_ERROR unable to read env file "none": Os { code: 2, kind: NotFound"#
-        )));
+        ));
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -166,9 +166,9 @@ mod tests {
         let r = load_dotenv(Path::new(""));
         let err = r.unwrap_err();
 
-        assert!(err.to_string().starts_with(String::from(
-            r#"FILE_ERROR unable to read env file "": Os { code: 2, kind: NotFound"#
-        )));
+        assert!(err
+            .to_string()
+            .starts_with(r#"FILE_ERROR unable to read env file "": Os { code: 2, kind: NotFound"#));
     }
 
     #[test]

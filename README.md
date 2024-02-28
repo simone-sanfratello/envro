@@ -20,6 +20,9 @@ WIP
   pip install --user -U pre-commit
   cz init
 
+  git add .
+  git commit -am "feat: add commit lint"
+
 - github CI
   publish crate
 

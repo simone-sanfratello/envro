@@ -2,30 +2,16 @@
 
 A crate to load environment variables from a .env file into the process environment variables
 
-WIP
+```rust
+```
 
 ## TODO
 
-- documentation
-  example
-
-- commit lint
-
-  https://commitizen-tools.github.io/commitizen/
-  https://pre-commit.com/#install
-  
-  sudo apt install python3-pip
-  
-  pip install --user -U Commitizen
-  pip install --user -U pre-commit
-  cz init
-
-  git add .
-  git commit -am "feat: add commit lint"
-  cz bump 
-  
 - github CI
   publish crate
+
+- validation
+- coerce to types
 
 ## Test
 

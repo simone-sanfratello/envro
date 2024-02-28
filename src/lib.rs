@@ -18,6 +18,13 @@ pub enum EnvroError {
 pub type EnvroVars = HashMap<String, String>;
 
 /// load .env file into process.env var
+///
+/// # Examples
+///
+/// ```
+/// let env_file = env::current_dir().unwrap().join(".env");
+/// let env_vars = load_dotenv(&env_file);
+/// ```
 pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
     let file_content = match fs::read_to_string(file_name) {
         Ok(c) => c,
@@ -73,6 +80,13 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
 }
 
 /// load vars from env file and set them in env vars, overriding
+///
+/// # Examples
+///
+/// ```
+/// let env_file = env::current_dir().unwrap().join(".env");
+/// let env_vars = load_dotenv_in_env_vars(&env_file);
+/// ```
 pub fn load_dotenv_in_env_vars(file_name: &Path) -> Result<(), EnvroError> {
     let vars = load_dotenv(file_name)?;
 

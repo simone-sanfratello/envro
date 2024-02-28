@@ -2,6 +2,12 @@
 
 A crate to load environment variables from a .env file into the process environment variables
 
+### Getting started
+
+```bash
+cargo add envro
+```
+
 ```rust
 use std::env;
 
@@ -31,11 +37,14 @@ fn main() {
 
 ## Test
 
+```bash
 cargo test -- --test-threads=1
+```
 
 ## TODO
 
 - github CI
+  run test
   publish crate
 
 - validation

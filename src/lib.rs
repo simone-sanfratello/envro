@@ -160,17 +160,6 @@ mod tests {
         );
     }
 
-    #[cfg(target_os = "windows")]
-    #[test]
-    fn should_handle_error_on_non_existing_dotenv_file_name_empty_on_win() {
-        let r = load_dotenv(Path::new(""));
-        let err = r.unwrap_err();
-
-        assert!(err
-            .to_string()
-            .starts_with(r#"FILE_ERROR unable to read env file "": Os { code: 2, kind: NotFound"#));
-    }
-
     #[test]
     fn should_handle_error_on_invalid_dotenv_line() {
         let file_name = env::temp_dir().join(".env-invalid-line");

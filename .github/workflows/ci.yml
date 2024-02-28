@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  pull_request:
+    paths-ignore:
+      - '*.md'
+      - '.gitignore'
+      - '*.yaml'
+      - 'example/**'
+      - '.cz.toml'
+
+jobs:
+  build_and_test:
+    name: Build and Test
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release --all-features
+      - run: cargo test -- --test-threads=1

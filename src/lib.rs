@@ -18,6 +18,16 @@ pub enum EnvroError {
 pub type EnvroVars = HashMap<String, String>;
 
 /// load .env file into process.env var
+///
+/// # Examples
+///
+/// ```
+/// use std::env;
+/// use envro::*;
+///
+/// let env_file = env::current_dir().unwrap().join(".env-sample");
+/// let env_vars = load_dotenv(&env_file).unwrap();
+/// ```
 pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
     let file_content = match fs::read_to_string(file_name) {
         Ok(c) => c,
@@ -73,6 +83,16 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
 }
 
 /// load vars from env file and set them in env vars, overriding
+///
+/// # Examples
+///
+/// ```
+/// use std::env;
+/// use envro::*;
+//
+/// let env_file = env::current_dir().unwrap().join(".env-sample");
+/// let env_vars = load_dotenv_in_env_vars(&env_file).unwrap();
+/// ```
 pub fn load_dotenv_in_env_vars(file_name: &Path) -> Result<(), EnvroError> {
     let vars = load_dotenv(file_name)?;
 
@@ -101,6 +121,7 @@ mod tests {
         assert_eq!(env::var("VAR"), Ok("value".to_string()));
     }
 
+    #[cfg(not(target_os = "windows"))]
     #[test]
     fn should_handle_error_on_non_existing_dotenv_file() {
         let r = load_dotenv(Path::new("none"));
@@ -114,6 +135,18 @@ mod tests {
         );
     }
 
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn should_handle_error_on_non_existing_dotenv_file_on_win() {
+        let r = load_dotenv(Path::new("none"));
+        let err = r.unwrap_err();
+
+        assert!(err.to_string().starts_with(
+            r#"FILE_ERROR unable to read env file "none": Os { code: 2, kind: NotFound"#
+        ));
+    }
+
+    #[cfg(not(target_os = "windows"))]
     #[test]
     fn should_handle_error_on_non_existing_dotenv_file_name_empty() {
         let r = load_dotenv(Path::new(""));
@@ -204,7 +237,8 @@ mod tests {
     fn should_handle_quoted_values() {
         let file_name = env::temp_dir().join(".env-quoted");
         let mut file = File::create(&file_name).unwrap();
-        file.write_all(b"\nVAR1=\"1\"\nVAR2=\"Lorem ipsum \"ciao!\" \"").unwrap();
+        file.write_all(b"\nVAR1=\"1\"\nVAR2=\"Lorem ipsum \"ciao!\" \"")
+            .unwrap();
         env::remove_var("VAR1");
         env::remove_var("VAR2");
 
@@ -213,5 +247,4 @@ mod tests {
         assert_eq!(env::var("VAR1"), Ok("1".to_string()));
         assert_eq!(env::var("VAR2"), Ok("Lorem ipsum \"ciao!\" ".to_string()));
     }
-
-  }
+}

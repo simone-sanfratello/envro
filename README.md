@@ -46,13 +46,6 @@ cargo test -- --test-threads=1
 ## TODO
 
 - github action
-  on PR
-  run fmt, test, build
-  test on win, mac, linux
-
-- add cargo fmt && cargo test on pre commit
-
-- github CI
   - publish crate - see https://github.com/googleapis/release-please
     - run cz bump on CI, create release commit, create github release, cargo publish
       - handle pre release (-dev, -beta ...)

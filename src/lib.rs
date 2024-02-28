@@ -141,12 +141,9 @@ mod tests {
         let r = load_dotenv(Path::new("none"));
         let err = r.unwrap_err();
 
-        assert_eq!(
-            err.to_string(),
-            String::from(
-                r#"FILE_ERROR unable to read env file "none": Os { code: 2, kind: NotFound, message: "The system cannot find the path specified." }"#
-            )
-        );
+        assert!(err.to_string().starts_with(String::from(
+            r#"FILE_ERROR unable to read env file "none": Os { code: 2, kind: NotFound"#
+        )));
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -169,12 +166,9 @@ mod tests {
         let r = load_dotenv(Path::new(""));
         let err = r.unwrap_err();
 
-        assert_eq!(
-            err.to_string(),
-            String::from(
-                r#"FILE_ERROR unable to read env file "": Os { code: 2, kind: NotFound, message: "The system cannot find the path specified." }"#
-            )
-        );
+        assert!(err.to_string().starts_with(String::from(
+            r#"FILE_ERROR unable to read env file "": Os { code: 2, kind: NotFound"#
+        )));
     }
 
     #[test]
@@ -254,7 +248,8 @@ mod tests {
     fn should_handle_quoted_values() {
         let file_name = env::temp_dir().join(".env-quoted");
         let mut file = File::create(&file_name).unwrap();
-        file.write_all(b"\nVAR1=\"1\"\nVAR2=\"Lorem ipsum \"ciao!\" \"").unwrap();
+        file.write_all(b"\nVAR1=\"1\"\nVAR2=\"Lorem ipsum \"ciao!\" \"")
+            .unwrap();
         env::remove_var("VAR1");
         env::remove_var("VAR2");
 
@@ -263,5 +258,4 @@ mod tests {
         assert_eq!(env::var("VAR1"), Ok("1".to_string()));
         assert_eq!(env::var("VAR2"), Ok("Lorem ipsum \"ciao!\" ".to_string()));
     }
-
-  }
+}

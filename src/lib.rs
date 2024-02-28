@@ -121,6 +121,7 @@ mod tests {
         assert_eq!(env::var("VAR"), Ok("value".to_string()));
     }
 
+    #[cfg(not(target_os = "windows"))]
     #[test]
     fn should_handle_error_on_non_existing_dotenv_file() {
         let r = load_dotenv(Path::new("none"));
@@ -134,8 +135,37 @@ mod tests {
         );
     }
 
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn should_handle_error_on_non_existing_dotenv_file_on_win() {
+        let r = load_dotenv(Path::new("none"));
+        let err = r.unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            String::from(
+                r#"FILE_ERROR unable to read env file "none": Os { code: 2, kind: NotFound, message: "No such file or directory" }"#
+            )
+        );
+    }
+
+    #[cfg(not(target_os = "windows"))]
     #[test]
     fn should_handle_error_on_non_existing_dotenv_file_name_empty() {
+        let r = load_dotenv(Path::new(""));
+        let err = r.unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            String::from(
+                r#"FILE_ERROR unable to read env file "": Os { code: 2, kind: NotFound, message: "No such file or directory" }"#
+            )
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn should_handle_error_on_non_existing_dotenv_file_name_empty_on_win() {
         let r = load_dotenv(Path::new(""));
         let err = r.unwrap_err();
 

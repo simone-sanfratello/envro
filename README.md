@@ -37,17 +37,28 @@ fn main() {
 
 ## Test
 
+Since env vars are been written, tests need to be sync
+
 ```bash
 cargo test -- --test-threads=1
 ```
 
 ## TODO
 
+- github action
+  on PR
+  run fmt, test, build
+  test on win, mac, linux
+
+- add cargo fmt && cargo test on pre commit
+
 - github CI
   run test
-  publish crate
+  publish crate (see https://github.com/googleapis/release-please)
+  handle pre release (-dev, -beta ...)
 
-- validation
+- value validation
+
 - coerce to types
 
 ---

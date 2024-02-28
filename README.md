@@ -22,7 +22,8 @@ WIP
 
   git add .
   git commit -am "feat: add commit lint"
-
+  cz bump 
+  
 - github CI
   publish crate
 

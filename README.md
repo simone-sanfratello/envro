@@ -50,9 +50,7 @@ cargo test -- --test-threads=1
     - run cz bump on CI, create release commit, create github release, cargo publish
       - handle pre release (-dev, -beta ...)
 
-- value validation
-
-- coerce to types
+- validation, coercion
 
 ---
 

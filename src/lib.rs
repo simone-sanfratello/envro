@@ -75,14 +75,13 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
             value = String::from(v1).replace("\\\"", "\"");
         }
 
-        vars.insert(String::from(v[0]), String::from(v[1]));
-        env::set_var(v[0], value);
+        vars.insert(String::from(v[0]), value);
     }
 
     Ok(vars)
 }
 
-/// load vars from env file and set them in env vars, overriding
+/// load vars from env file and set them in env vars, without overriding
 ///
 /// # Examples
 ///
@@ -97,6 +96,14 @@ pub fn load_dotenv_in_env_vars(file_name: &Path) -> Result<(), EnvroError> {
     let vars = load_dotenv(file_name)?;
 
     for (key, value) in vars {
+        if let Some(current) = env::var(&key).ok() {
+            if current.len() > 0 {
+                println!("{} already set {}", key, current);
+                continue;
+            }
+        }
+
+        println!(" *** {} = {}", key, value);
         env::set_var(key, value);
     }
 
@@ -213,7 +220,7 @@ mod tests {
         env::remove_var("VAR");
         env::remove_var("VAR1");
 
-        load_dotenv(file_name.as_path()).unwrap();
+        load_dotenv_in_env_vars(file_name.as_path()).unwrap();
 
         assert_eq!(env::var("VAR"), Ok("1".to_string()));
         assert_eq!(env::var("VAR1"), Ok("asd".to_string()));
@@ -227,7 +234,7 @@ mod tests {
         env::remove_var("VAR");
         env::remove_var("VAR1");
 
-        load_dotenv(file_name.as_path()).unwrap();
+        load_dotenv_in_env_vars(file_name.as_path()).unwrap();
 
         assert_eq!(env::var("VAR"), Ok("1".to_string()));
         assert_eq!(env::var("VAR1"), Err(env::VarError::NotPresent));
@@ -242,9 +249,30 @@ mod tests {
         env::remove_var("VAR1");
         env::remove_var("VAR2");
 
-        load_dotenv(file_name.as_path()).unwrap();
+        load_dotenv_in_env_vars(file_name.as_path()).unwrap();
 
         assert_eq!(env::var("VAR1"), Ok("1".to_string()));
         assert_eq!(env::var("VAR2"), Ok("Lorem ipsum \"ciao!\" ".to_string()));
+    }
+
+    #[test]
+    fn should_not_ovveride_env_vars() {
+        env::remove_var("VAR1");
+        env::remove_var("VAR2");
+        env::remove_var("VAR3");
+
+        let file_name = env::temp_dir().join(".env-not-override");
+        let mut file = File::create(&file_name).unwrap();
+        file.write_all(b"\nVAR1=\"value1\"\nVAR2=2\nVAR3=3")
+            .unwrap();
+
+        env::set_var("VAR1", "current-value");
+        println!(" --------- {:?}", env::var("VAR1"));
+
+        load_dotenv_in_env_vars(file_name.as_path()).unwrap();
+
+        assert_eq!(env::var("VAR1"), Ok("current-value".to_string()));
+        assert_eq!(env::var("VAR2"), Ok("2".to_string()));
+        assert_eq!(env::var("VAR3"), Ok("3".to_string()));
     }
 }

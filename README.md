@@ -46,11 +46,14 @@ cargo test -- --test-threads=1
 ## TODO
 
 - github action publish
-  - publish crate - see https://github.com/googleapis/release-please
+  - publish crate
+    - see https://github.com/googleapis/release-please
+    - https://github.com/ameknite/rust-ci-cd-template
     - run cz bump on CI, create release commit, create github release, cargo publish
       - handle pre release (-dev, -beta ...)
 
 - validation, coercion
+- code coverage
 
 ---
 

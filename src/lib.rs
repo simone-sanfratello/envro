@@ -39,47 +39,72 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
         }
     };
 
-    let mut vars = EnvroVars::new();
-
-    for line in file_content.lines() {
-        if line.len() < 1 {
-            continue;
-        }
-
-        let line = line.trim();
-
-        // comment line
-        if line.starts_with('#') {
-            continue;
-        }
-
-        let v: Vec<&str> = line.split('=').collect();
-
-        if v.len() != 2 || v[0].len() < 1 || v[1].len() < 1 {
-            return Err(EnvroError::Parse {
-                line: String::from(line),
-            });
-        }
-
-        let mut value = String::from(v[1]);
-
-        // values with quotes
-        if value.starts_with('"') {
-            if !value.ends_with('"') {
-                return Err(EnvroError::Parse {
-                    line: String::from(line),
-                });
-            }
-
-            let v1 = v[1].get(1..v[1].len() - 1).unwrap();
-            value = String::from(v1).replace("\\\"", "\"");
-        }
-
-        vars.insert(String::from(v[0]), String::from(v[1]));
-        env::set_var(v[0], value);
-    }
+    let vars = parse_env_file_content(file_content);
 
     Ok(vars)
+}
+
+#[derive(Debug, PartialEq, Eq, Hash)]
+enum State {
+    OpenValueQuote,
+    CloseValueQuote,
+    Variable,
+    Value,
+
+    Invalid,
+}
+
+#[macro_export]
+macro_rules! spacing {
+    ( $c:tt ) => {
+        *$c == ' ' || *$c == '\n' || *$c == '\t' || *$c == '\r'
+    };
+}
+
+fn parse_env_file_content(file_content: String) -> EnvroVars {
+    let mut vars = EnvroVars::new();
+
+    let chars: Vec<char> = file_content.chars().collect::<Vec<_>>();
+
+    let len = chars.len();
+    let mut index: usize = 0;
+    let mut state = State::Variable;
+
+    while index < len {
+        let c: &char = &chars[index];
+        loop {
+            if spacing!(c) {
+                break;
+            }
+            match state {
+                State::Variable => {
+                    // collect til =
+                    // TODO allowed chars option
+                }
+                State::Value => {
+                    //     quoted_value(&mut p, &chars, &len, false);
+                    //     p.state = State::CloseValueQuote;
+                    //     break;
+                    // }
+                }
+
+                _ => {
+                    state = State::Invalid;
+                    break;
+                }
+            }
+        }
+
+        // println!("{:?} {}", p.state, chars[p.index]);
+        index += 1;
+    }
+
+    // if state == invalid
+
+    //     vars.insert(String::from(v[0]), String::from(v[1]));
+    // }
+
+    vars
 }
 
 /// load vars from env file and set them in env vars, overriding

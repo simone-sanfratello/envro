@@ -1,4 +1,5 @@
 # from https://github.com/marketplace/actions/create-a-release-in-a-github-action
+# see https://github.com/marketplace/actions/release-please-action#advanced-release-configuration
 
 on:
   push:

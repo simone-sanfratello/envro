@@ -45,14 +45,15 @@ cargo test -- --test-threads=1
 
 ## TODO
 
+- check .evn file contains vars only once
+- support multiline string values
+- values validation
 - github action publish
   - publish crate - see https://github.com/googleapis/release-please
     - run cz bump on CI, create release commit, create github release, cargo publish
       - handle pre release (-dev, -beta ...)
-
-- value validation
-
-- coerce to types
+- coerce env vars to types
+- test, code coverage
 
 ---
 

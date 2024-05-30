@@ -98,12 +98,10 @@ pub fn load_dotenv_in_env_vars(file_name: &Path) -> Result<(), EnvroError> {
     for (key, value) in vars {
         if let Some(current) = env::var(&key).ok() {
             if current.len() > 0 {
-                println!("{} already set {}", key, current);
                 continue;
             }
         }
 
-        println!(" *** {} = {}", key, value);
         env::set_var(key, value);
     }
 

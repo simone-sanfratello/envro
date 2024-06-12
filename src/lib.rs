@@ -61,9 +61,7 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
                 line: String::from(line),
             });
         } else if v.len() > 2 {
-            let a = v[1..].join("=");
-            println!("var: {:?} value: {:?}", var, a);
-            a
+            v[1..].join("=")
         } else {
             String::from(v[1])
         };
@@ -309,7 +307,6 @@ mod tests {
             .unwrap();
 
         env::set_var("VAR1", "current-value");
-        println!(" --------- {:?}", env::var("VAR1"));
 
         load_dotenv_in_env_vars(file_name.as_path()).unwrap();
 

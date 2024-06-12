@@ -1,7 +1,6 @@
-workspace = { members = ["example"] }
 [package]
 name = "envro"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 description = "A crate to load environment variables from a .env file into the process environment variables"
 license = "MIT"
@@ -9,4 +8,7 @@ license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-thiserror = "1.0.57"
+thiserror = "1.0.61"
+
+[dev-dependencies]
+serial_test = "3.1.1"

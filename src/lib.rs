@@ -55,13 +55,24 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
 
         let v: Vec<&str> = line.split('=').collect();
 
-        if v.len() != 2 || v[0].len() < 1 || v[1].len() < 1 {
+        let var = String::from(v[0]);
+        let mut value = if v.len() < 2 {
+            return Err(EnvroError::Parse {
+                line: String::from(line),
+            });
+        } else if v.len() > 2 {
+            let a = v[1..].join("=");
+            println!("var: {:?} value: {:?}", var, a);
+            a
+        } else {
+            String::from(v[1])
+        };
+
+        if var.len() < 1 || value.len() < 1 {
             return Err(EnvroError::Parse {
                 line: String::from(line),
             });
         }
-
-        let mut value = String::from(v[1]);
 
         // values with quotes
         if value.starts_with('"') {
@@ -71,11 +82,11 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
                 });
             }
 
-            let v1 = v[1].get(1..v[1].len() - 1).unwrap();
+            let v1 = value.get(1..value.len() - 1).unwrap();
             value = String::from(v1).replace("\\\"", "\"");
         }
 
-        vars.insert(String::from(v[0]), value);
+        vars.insert(var, value);
     }
 
     Ok(vars)
@@ -113,8 +124,10 @@ mod tests {
     use std::{env, fs::File, io::Write};
 
     use super::*;
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn should_load_a_simple_dotenv_file() {
         let file_name = env::temp_dir().join(".env-simple");
         let mut file = File::create(&file_name).unwrap();
@@ -128,6 +141,7 @@ mod tests {
 
     #[cfg(not(target_os = "windows"))]
     #[test]
+    #[serial]
     fn should_handle_error_on_non_existing_dotenv_file() {
         let r = load_dotenv(Path::new("none"));
         let err = r.unwrap_err();
@@ -142,6 +156,7 @@ mod tests {
 
     #[cfg(target_os = "windows")]
     #[test]
+    #[serial]
     fn should_handle_error_on_non_existing_dotenv_file_on_win() {
         let r = load_dotenv(Path::new("none"));
         let err = r.unwrap_err();
@@ -153,6 +168,7 @@ mod tests {
 
     #[cfg(not(target_os = "windows"))]
     #[test]
+    #[serial]
     fn should_handle_error_on_non_existing_dotenv_file_name_empty() {
         let r = load_dotenv(Path::new(""));
         let err = r.unwrap_err();
@@ -166,6 +182,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn should_handle_error_on_invalid_dotenv_line() {
         let file_name = env::temp_dir().join(".env-invalid-line");
         let mut file = File::create(&file_name).unwrap();
@@ -181,6 +198,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn should_handle_error_on_invalid_dotenv_var() {
         let file_name = env::temp_dir().join(".env-invalid-var");
         let mut file = File::create(&file_name).unwrap();
@@ -196,6 +214,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn should_handle_error_on_invalid_dotenv_value() {
         let file_name = env::temp_dir().join(".env-invalid-value");
         let mut file = File::create(&file_name).unwrap();
@@ -211,6 +230,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn should_handle_empty_lines() {
         let file_name = env::temp_dir().join(".env-empty-lines");
         let mut file = File::create(&file_name).unwrap();
@@ -225,6 +245,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn should_handle_comment_lines() {
         let file_name = env::temp_dir().join(".env-empty-lines");
         let mut file = File::create(&file_name).unwrap();
@@ -239,6 +260,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn should_handle_quoted_values() {
         let file_name = env::temp_dir().join(".env-quoted");
         let mut file = File::create(&file_name).unwrap();
@@ -254,6 +276,28 @@ mod tests {
     }
 
     #[test]
+    #[serial]
+    fn should_handle_quoted_values_containg_equals() {
+        let file_name = env::temp_dir().join(".env-quoted-equals");
+        let mut file = File::create(&file_name).unwrap();
+        file.write_all(
+            b"\nVAR1=\"1\"\nVAR2=\"host=localhost user=admin password=secret dbname=mydb\"",
+        )
+        .unwrap();
+        env::remove_var("VAR1");
+        env::remove_var("VAR2");
+
+        load_dotenv_in_env_vars(file_name.as_path()).unwrap();
+
+        assert_eq!(env::var("VAR1"), Ok("1".to_string()));
+        assert_eq!(
+            env::var("VAR2"),
+            Ok("host=localhost user=admin password=secret dbname=mydb".to_string())
+        );
+    }
+
+    #[test]
+    #[serial]
     fn should_not_ovveride_env_vars() {
         env::remove_var("VAR1");
         env::remove_var("VAR2");

@@ -1,6 +1,6 @@
 [package]
 name = "envro"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2021"
 description = "A crate to load environment variables from a .env file into the process environment variables"
 license = "MIT"

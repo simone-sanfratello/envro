@@ -37,10 +37,8 @@ fn main() {
 
 ## Test
 
-Since env vars are been written, tests need to be sync
-
 ```bash
-cargo test -- --test-threads=1
+cargo test
 ```
 
 ## TODO

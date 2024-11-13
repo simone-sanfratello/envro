@@ -66,7 +66,8 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
             String::from(v[1])
         };
 
-        if var.len() < 1 || value.len() < 1 {
+        // Only check for empty variable name, allow empty values
+        if var.len() < 1 {
             return Err(EnvroError::Parse {
                 line: String::from(line),
             });
@@ -213,18 +214,19 @@ mod tests {
 
     #[test]
     #[serial]
-    fn should_handle_error_on_invalid_dotenv_value() {
-        let file_name = env::temp_dir().join(".env-invalid-value");
+    fn should_handle_empty_values() {
+        let file_name = env::temp_dir().join(".env-empty-value");
         let mut file = File::create(&file_name).unwrap();
-        file.write_all(b"VAR=").unwrap();
+        file.write_all(b"VAR=\nVAR2=\"\"\nVAR3=value").unwrap();
+        env::remove_var("VAR");
+        env::remove_var("VAR2");
+        env::remove_var("VAR3");
 
-        let r = load_dotenv(file_name.as_path());
-        let err = r.unwrap_err();
+        load_dotenv_in_env_vars(file_name.as_path()).unwrap();
 
-        assert_eq!(
-            err.to_string(),
-            String::from(r#"PARSE_ERROR line "VAR=" is not valid"#)
-        );
+        assert_eq!(env::var("VAR"), Ok("".to_string()));
+        assert_eq!(env::var("VAR2"), Ok("".to_string()));
+        assert_eq!(env::var("VAR3"), Ok("value".to_string()));
     }
 
     #[test]

@@ -1,3 +1,9 @@
+## 0.6.0 (2025-11-28)
+
+### Feat
+
+- duplicate variable detection
+
 ## 0.5.0 (2025-11-28)
 
 ### Feat

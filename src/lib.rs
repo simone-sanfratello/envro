@@ -87,6 +87,14 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
             value = String::from(v1).replace("\\\"", "\"");
         }
 
+        // Check for duplicate variable names
+        if vars.contains_key(&var) {
+            return Err(EnvroError::Parse {
+                line: String::from(line),
+                reason: format!("duplicate variable name: {}", var),
+            });
+        }
+
         vars.insert(var, value);
     }
 
@@ -339,4 +347,21 @@ mod tests {
         assert_eq!(env::var("VAR2"), Ok("2".to_string()));
         assert_eq!(env::var("VAR3"), Ok("3".to_string()));
     }
+
+    #[test]
+    #[serial]
+    fn should_detect_duplicate_variable_names() {
+        let file_name = env::temp_dir().join(".env-duplicate");
+        let mut file = File::create(&file_name).unwrap();
+        file.write_all(b"VAR1=value1\nVAR2=value2\nVAR1=value3").unwrap();
+
+        let r = load_dotenv(file_name.as_path());
+        let err = r.unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            String::from(r#"PARSE_ERROR line "VAR1=value3" is not valid: duplicate variable name: VAR1"#)
+        );
+    }
+
 }

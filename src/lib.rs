@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::io;
 use std::{env, fs, path::Path};
 
-// TODO better / more standard error handling?
 #[derive(Debug, thiserror::Error)]
 pub enum EnvroError {
     #[error("FILE_ERROR unable to read env file {file:?}: {source:?}")]
@@ -11,8 +10,8 @@ pub enum EnvroError {
         source: io::Error,
         file: String,
     },
-    #[error("PARSE_ERROR line {line:?} is not valid")]
-    Parse { line: String },
+    #[error("PARSE_ERROR line {line:?} is not valid: {reason}")]
+    Parse { line: String, reason: String },
 }
 
 pub type EnvroVars = HashMap<String, String>;
@@ -59,6 +58,7 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
         let mut value = if v.len() < 2 {
             return Err(EnvroError::Parse {
                 line: String::from(line),
+                reason: "missing value".to_string(),
             });
         } else if v.len() > 2 {
             v[1..].join("=")
@@ -70,6 +70,7 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
         if var.len() < 1 {
             return Err(EnvroError::Parse {
                 line: String::from(line),
+                reason: "missing variable name".to_string(),
             });
         }
 
@@ -78,6 +79,7 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
             if !value.ends_with('"') {
                 return Err(EnvroError::Parse {
                     line: String::from(line),
+                    reason: "missing closing quote".to_string(),
                 });
             }
 
@@ -192,7 +194,7 @@ mod tests {
 
         assert_eq!(
             err.to_string(),
-            String::from(r#"PARSE_ERROR line "VAR value" is not valid"#)
+            String::from(r#"PARSE_ERROR line "VAR value" is not valid: missing value"#)
         );
     }
 
@@ -208,7 +210,7 @@ mod tests {
 
         assert_eq!(
             err.to_string(),
-            String::from(r#"PARSE_ERROR line "=value" is not valid"#)
+            String::from(r#"PARSE_ERROR line "=value" is not valid: missing variable name"#)
         );
     }
 
@@ -293,6 +295,27 @@ mod tests {
         assert_eq!(
             env::var("VAR2"),
             Ok("host=localhost user=admin password=secret dbname=mydb".to_string())
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn should_handle_invalid_quoted_values() {
+        let file_name = env::temp_dir().join(".env-invalid-quoted");
+        let mut file = File::create(&file_name).unwrap();
+        file.write_all(
+            b"\nVAR1=\"1\"\nVAR2=\"host=localhost user=admin password=secret dbname=mydb",
+        )
+        .unwrap();
+        env::remove_var("VAR1");
+        env::remove_var("VAR2");
+
+        let r = load_dotenv(file_name.as_path());
+        let err = r.unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            String::from(r#"PARSE_ERROR line "VAR2=\"host=localhost user=admin password=secret dbname=mydb" is not valid: missing closing quote"#)
         );
     }
 

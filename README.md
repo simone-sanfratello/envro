@@ -43,15 +43,13 @@ cargo test
 
 ## TODO
 
-- check .evn file contains vars only once
-- support multiline string values
+- check .env file contains vars only once
 - values validation
 - github action publish
   - publish crate - see https://github.com/googleapis/release-please
     - run cz bump on CI, create release commit, create github release, cargo publish
       - handle pre release (-dev, -beta ...)
 - coerce env vars to types
-- test, code coverage
 
 ---
 
@@ -59,7 +57,7 @@ cargo test
 
 MIT License
 
-Copyright (c) 2024 Simone Sanfratello
+Copyright (c) 2025 Simone Sanfratello
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

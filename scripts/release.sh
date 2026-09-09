@@ -2,6 +2,8 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+# shellcheck source=lib.sh
+source "$(dirname "$0")/lib.sh"
 
 echo "==> checkout and pull main"
 git checkout main
@@ -20,9 +22,14 @@ echo "==> tests"
 cargo test --tests -- --test-threads=1
 
 echo "==> coverage"
+if ! require_cmd cargo-tarpaulin; then
+  echo "error: cargo-tarpaulin not found; run: just setup" >&2
+  exit 1
+fi
 cargo tarpaulin --tests --fail-under 100
 
 echo "==> bump version (commitizen)"
+ensure_cmd cz commitizen
 cz bump
 
 echo "==> push main and tags"

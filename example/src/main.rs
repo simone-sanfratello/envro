@@ -12,7 +12,7 @@ fn main() {
     println!("{:#?}", &env_vars);
 
     // load env vars into env::vars
-    load_dotenv_in_env_vars(&env_file).unwrap();
+    load_dotenv_in_env_vars(&env_file, false).unwrap();
     println!("---");
     println!(">> from env::vars()");
     for (key, value) in env::vars() {

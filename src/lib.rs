@@ -101,24 +101,29 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
     Ok(vars)
 }
 
-/// load vars from env file and set them in env vars, without overriding
+/// Load vars from an env file into process environment variables.
+///
+/// When `override_existing` is `false`, existing non-empty process values are kept;
+/// unset or empty values are filled from the file. When `true`, file values always win.
 ///
 /// # Examples
 ///
 /// ```
 /// use std::env;
 /// use envro::*;
-//
+///
 /// let env_file = env::current_dir().unwrap().join(".env-sample");
-/// let env_vars = load_dotenv_in_env_vars(&env_file).unwrap();
+/// load_dotenv_in_env_vars(&env_file, false).unwrap();
 /// ```
-pub fn load_dotenv_in_env_vars(file_name: &Path) -> Result<(), EnvroError> {
+pub fn load_dotenv_in_env_vars(file_name: &Path, override_existing: bool) -> Result<(), EnvroError> {
     let vars = load_dotenv(file_name)?;
 
     for (key, value) in vars {
-        if let Some(current) = env::var(&key).ok() {
-            if current.len() > 0 {
-                continue;
+        if !override_existing {
+            if let Some(current) = env::var(&key).ok() {
+                if !current.is_empty() {
+                    continue;
+                }
             }
         }
 
@@ -143,7 +148,7 @@ mod tests {
         file.write_all(b"VAR=value").unwrap();
         env::remove_var("VAR");
 
-        load_dotenv_in_env_vars(file_name.as_path()).unwrap();
+        load_dotenv_in_env_vars(file_name.as_path(), false).unwrap();
 
         assert_eq!(env::var("VAR"), Ok("value".to_string()));
     }
@@ -232,7 +237,7 @@ mod tests {
         env::remove_var("VAR2");
         env::remove_var("VAR3");
 
-        load_dotenv_in_env_vars(file_name.as_path()).unwrap();
+        load_dotenv_in_env_vars(file_name.as_path(), false).unwrap();
 
         assert_eq!(env::var("VAR"), Ok("".to_string()));
         assert_eq!(env::var("VAR2"), Ok("".to_string()));
@@ -248,7 +253,7 @@ mod tests {
         env::remove_var("VAR");
         env::remove_var("VAR1");
 
-        load_dotenv_in_env_vars(file_name.as_path()).unwrap();
+        load_dotenv_in_env_vars(file_name.as_path(), false).unwrap();
 
         assert_eq!(env::var("VAR"), Ok("1".to_string()));
         assert_eq!(env::var("VAR1"), Ok("asd".to_string()));
@@ -263,7 +268,7 @@ mod tests {
         env::remove_var("VAR");
         env::remove_var("VAR1");
 
-        load_dotenv_in_env_vars(file_name.as_path()).unwrap();
+        load_dotenv_in_env_vars(file_name.as_path(), false).unwrap();
 
         assert_eq!(env::var("VAR"), Ok("1".to_string()));
         assert_eq!(env::var("VAR1"), Err(env::VarError::NotPresent));
@@ -279,7 +284,7 @@ mod tests {
         env::remove_var("VAR1");
         env::remove_var("VAR2");
 
-        load_dotenv_in_env_vars(file_name.as_path()).unwrap();
+        load_dotenv_in_env_vars(file_name.as_path(), false).unwrap();
 
         assert_eq!(env::var("VAR1"), Ok("1".to_string()));
         assert_eq!(env::var("VAR2"), Ok("Lorem ipsum \"ciao!\" ".to_string()));
@@ -297,7 +302,7 @@ mod tests {
         env::remove_var("VAR1");
         env::remove_var("VAR2");
 
-        load_dotenv_in_env_vars(file_name.as_path()).unwrap();
+        load_dotenv_in_env_vars(file_name.as_path(), false).unwrap();
 
         assert_eq!(env::var("VAR1"), Ok("1".to_string()));
         assert_eq!(
@@ -341,7 +346,7 @@ mod tests {
 
         env::set_var("VAR1", "current-value");
 
-        load_dotenv_in_env_vars(file_name.as_path()).unwrap();
+        load_dotenv_in_env_vars(file_name.as_path(), false).unwrap();
 
         assert_eq!(env::var("VAR1"), Ok("current-value".to_string()));
         assert_eq!(env::var("VAR2"), Ok("2".to_string()));
@@ -364,4 +369,59 @@ mod tests {
         );
     }
 
+    #[test]
+    #[serial]
+    fn should_override_env_vars_when_enabled() {
+        env::remove_var("VAR1");
+        env::remove_var("VAR2");
+
+        let file_name = env::temp_dir().join(".env-override");
+        let mut file = File::create(&file_name).unwrap();
+        file.write_all(b"VAR1=from-file\nVAR2=2").unwrap();
+
+        env::set_var("VAR1", "current-value");
+
+        load_dotenv_in_env_vars(file_name.as_path(), true).unwrap();
+
+        assert_eq!(env::var("VAR1"), Ok("from-file".to_string()));
+        assert_eq!(env::var("VAR2"), Ok("2".to_string()));
+    }
+
+    #[test]
+    #[serial]
+    fn should_keep_dollar_signs_literal_without_substitution() {
+        // Would be mangled by dotenv/dotenvy-style $VAR expansion (e.g. bcrypt hashes).
+        let file_name = env::temp_dir().join(".env-dollar-literal");
+        let mut file = File::create(&file_name).unwrap();
+        file.write_all(
+            b"HOST=example.com\n\
+PASSWORD_HASH=$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy\n\
+REF=$HOST\n\
+BRACE=${HOST}\n\
+QUOTED=\"cost=$2a$10$abc\"\n\
+MIXED=prefix-$HOST-suffix",
+        )
+        .unwrap();
+
+        let vars = load_dotenv(file_name.as_path()).unwrap();
+
+        assert_eq!(
+            vars.get("PASSWORD_HASH").map(String::as_str),
+            Some("$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy")
+        );
+        assert_eq!(vars.get("REF").map(String::as_str), Some("$HOST"));
+        assert_eq!(vars.get("BRACE").map(String::as_str), Some("${HOST}"));
+        assert_eq!(
+            vars.get("QUOTED").map(String::as_str),
+            Some("cost=$2a$10$abc")
+        );
+        assert_eq!(
+            vars.get("MIXED").map(String::as_str),
+            Some("prefix-$HOST-suffix")
+        );
+        // HOST must not be interpolated into other values
+        assert_ne!(vars.get("REF").map(String::as_str), Some("example.com"));
+    }
+
 }
+

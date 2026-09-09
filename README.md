@@ -10,7 +10,7 @@ Env vars for Rust: parse `.env` files, load them into `std::env`, and validate v
 - **Parse** a `.env` file to a `HashMap` — no side effects on the process.
 - **Load** a `.env` file into the process environment with an explicit override policy.
 - **Validate** env vars against a `Schema` of composable rules. Validation is fully decoupled from loading: it works on any `HashMap`, on a `.env` file, or on the live process environment.
-- **Small `.env` dialect**: `#` comments, empty values, duplicate keys rejected.
+- **Small `.env` dialect**: `#` comments, empty values, double-quoted strings (with multi-line support), `=` inside values, `$` kept literal, duplicate keys rejected.
 
 ## Getting started
 
@@ -591,6 +591,25 @@ WITH_EQUALS=host=localhost user=admin
 | `DSN=host=db user=admin` | `DSN` = `host=db user=admin` | `=` allowed inside value |
 | `HASH=$2a$10$abc`      | `HASH` = `$2a$10$abc`          | `$` kept literal (no `$VAR`) |
 | `URL="pg://u:p@h/db"`  | `URL` = `pg://u:p@h/db`        | Any chars fine inside quotes |
+| `KEY="line1`<br/>`line2"` | `KEY` = `line1\nline2`      | Multi-line quoted value — newlines preserved |
+
+### Multi-line values
+
+Double-quoted values may span multiple physical lines. When a value opens
+with `"` and does not close on the same line, envro keeps reading lines
+(joining them with `\n`) until it finds a line ending with an unescaped `"`.
+Lines inside the quotes are taken **literally** — blank lines and `#` at the
+start of a line are part of the value, not comments. CRLF endings are
+normalized to `\n` inside the value.
+
+```env
+PEM="-----BEGIN PRIVATE KEY-----
+MIIBVwIBADANBgkqhkiG9w0BAQEFAA...
+-----END PRIVATE KEY-----"
+```
+
+Escapes inside quotes: `\"` — a literal `"`; a trailing `\"` on a line therefore
+does **not** close the value.
 
 ### Invalid rows
 
@@ -605,15 +624,20 @@ Anything a `.env` file rejects surfaces as `EnvroError::Parse`; unreadable /
 missing files surface as `EnvroError::File`. See [Validation](#validation) for
 `EnvroError::Validation`.
 
-## Test
+## Out of scope
 
-```bash
-cargo test
-```
+Features not implemented by design:
+
+- **No multi-file layering** — composable configs are avoided; one path per call. Follows the “No-Inheritance” Flat principle ([CUE on inheritance](https://cuelang.org/docs/concept/configuration-use-case/#inheritance-based-configuration-languages), [Angular LIFT Flat](https://angular.io/guide/styleguide#flat)).
+- **No compile-time macros** — config stays outside the binary so the same build can run with different env files or process env (deploy, containers, CI). Values are never baked in at `cargo build`.
 
 ## TODO
 
 - coerce env vars to types
+- support $VAR replacing
+- encryption
+- performance
+
 - github action publish
   - publish crate - see https://github.com/googleapis/release-please
     - run cz bump on CI, create release commit, create github release, cargo publish

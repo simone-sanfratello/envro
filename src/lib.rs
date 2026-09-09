@@ -2,6 +2,11 @@ use std::collections::HashMap;
 use std::io;
 use std::{env, fs, path::Path};
 
+mod validate;
+pub use validate::{
+    load_dotenv_validated, validate, validate_env, Field, Schema, ValidationIssue,
+};
+
 #[derive(Debug, thiserror::Error)]
 pub enum EnvroError {
     #[error("FILE_ERROR unable to read env file {file:?}: {source:?}")]
@@ -12,6 +17,8 @@ pub enum EnvroError {
     },
     #[error("PARSE_ERROR line {line:?} is not valid: {reason}")]
     Parse { line: String, reason: String },
+    #[error("VALIDATION_ERROR {}", validate::format_issues(errors))]
+    Validation { errors: Vec<ValidationIssue> },
 }
 
 pub type EnvroVars = HashMap<String, String>;
@@ -431,3 +438,7 @@ MIXED=prefix-$HOST-suffix",
         assert_ne!(vars.get("REF").map(String::as_str), Some("example.com"));
     }
 }
+
+
+--- Cross-Source Hints ---
+  health://complexity/src/lib.rs#load_dotenv [health_hotspot] w=19.0

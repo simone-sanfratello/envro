@@ -1,6 +1,6 @@
 # Envro
 
-A crate to load environment variables from a .env file into the process environment variables
+A crate to load environment variables from a `.env` file into the process environment.
 
 ### Getting started
 
@@ -10,30 +10,108 @@ cargo add envro
 
 ```rust
 use std::env;
-
 use envro::*;
 
 fn main() {
-    let env_file = env::current_dir().unwrap().join(".env-sample");
+    let env_file = env::current_dir().unwrap().join(".env");
 
-    // load env vars and return them
-    let env_vars = load_dotenv(&env_file).unwrap();
-    println!("---");
-    println!(">> vars from .env file");
-    println!("{:#?}", &env_vars);
+    // parse only
+    let vars = load_dotenv(&env_file).unwrap();
 
-    // load env vars into env::vars
-    load_dotenv_in_env_vars(&env_file).unwrap();
-    println!("---");
-    println!(">> from env::vars()");
-    for (key, value) in env::vars() {
-        if !env_vars.contains_key(&key) {
-            continue;
-        }
-        println!("{key}: {value}");
-    }
+    // parse and set process env (keep existing non-empty values)
+    load_dotenv_in_env_vars(&env_file, false).unwrap();
+
+    println!("{vars:#?}");
 }
 ```
+
+## API
+
+### Types
+
+- `EnvroVars` — alias for `HashMap<String, String>`
+- `EnvroError` — errors from reading or parsing a `.env` file
+  - `EnvroError::File` — cannot read the file
+  - `EnvroError::Parse` — invalid line (missing `=`, empty name, unclosed quote, duplicate key, …)
+
+### `load_dotenv(path) -> Result<EnvroVars, EnvroError>`
+
+Parses a `.env` file and returns the variables as a map. Does **not** change process environment variables. Duplicate keys in the file are rejected.
+
+```rust
+use std::env;
+use envro::*;
+
+let env_file = env::current_dir().unwrap().join(".env");
+let vars = load_dotenv(&env_file)?;
+
+assert_eq!(vars.get("DB_POOL_SIZE"), Some(&"32".to_string()));
+```
+
+### `load_dotenv_in_env_vars(path, override_existing) -> Result<(), EnvroError>`
+
+Parses the file and sets process environment variables.
+
+| `override_existing` | Behavior |
+| --- | --- |
+| `false` | Keep existing **non-empty** process values; set unset or empty ones from the file |
+| `true` | Always set values from the file, overwriting existing process values |
+
+Keep existing values:
+
+```rust
+use std::env;
+use envro::*;
+
+env::set_var("DB_POOL_SIZE", "8");
+
+let env_file = env::current_dir().unwrap().join(".env");
+load_dotenv_in_env_vars(&env_file, false)?;
+
+// process value wins when already set and non-empty
+assert_eq!(env::var("DB_POOL_SIZE").unwrap(), "8");
+```
+
+Override existing values:
+
+```rust
+use std::env;
+use envro::*;
+
+env::set_var("DB_POOL_SIZE", "8");
+
+let env_file = env::current_dir().unwrap().join(".env");
+load_dotenv_in_env_vars(&env_file, true)?;
+
+// file value wins
+assert_eq!(env::var("DB_POOL_SIZE").unwrap(), "32");
+```
+
+## `.env` format
+
+```env
+# comments are ignored
+DB_CONNECTION_STRING=pg://user:pass@db/mydb
+DB_POOL_SIZE=32
+EMPTY=
+QUOTED="value with spaces"
+ESCAPED="say \"hello\""
+WITH_EQUALS=host=localhost user=admin
+```
+
+Supported:
+
+- empty lines and `#` comments
+- empty values (`KEY=` or `KEY=""`)
+- double-quoted values, with `\"` escapes
+- `=` inside values (unquoted or quoted)
+
+Rejected:
+
+- missing `=` / missing value
+- empty variable name (`=value`)
+- unclosed double quote
+- duplicate variable names in the same file
 
 ## Test
 
@@ -43,7 +121,6 @@ cargo test
 
 ## TODO
 
-- check .env file contains vars only once
 - values validation
 - github action publish
   - publish crate - see https://github.com/googleapis/release-please
@@ -57,7 +134,7 @@ cargo test
 
 MIT License
 
-Copyright (c) 2025 Simone Sanfratello
+Copyright (c) 2024-2026 Simone Sanfratello
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

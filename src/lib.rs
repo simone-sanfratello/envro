@@ -115,7 +115,10 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
 /// let env_file = env::current_dir().unwrap().join(".env-sample");
 /// load_dotenv_in_env_vars(&env_file, false).unwrap();
 /// ```
-pub fn load_dotenv_in_env_vars(file_name: &Path, override_existing: bool) -> Result<(), EnvroError> {
+pub fn load_dotenv_in_env_vars(
+    file_name: &Path,
+    override_existing: bool,
+) -> Result<(), EnvroError> {
     let vars = load_dotenv(file_name)?;
 
     for (key, value) in vars {
@@ -328,7 +331,9 @@ mod tests {
 
         assert_eq!(
             err.to_string(),
-            String::from(r#"PARSE_ERROR line "VAR2=\"host=localhost user=admin password=secret dbname=mydb" is not valid: missing closing quote"#)
+            String::from(
+                r#"PARSE_ERROR line "VAR2=\"host=localhost user=admin password=secret dbname=mydb" is not valid: missing closing quote"#
+            )
         );
     }
 
@@ -358,14 +363,17 @@ mod tests {
     fn should_detect_duplicate_variable_names() {
         let file_name = env::temp_dir().join(".env-duplicate");
         let mut file = File::create(&file_name).unwrap();
-        file.write_all(b"VAR1=value1\nVAR2=value2\nVAR1=value3").unwrap();
+        file.write_all(b"VAR1=value1\nVAR2=value2\nVAR1=value3")
+            .unwrap();
 
         let r = load_dotenv(file_name.as_path());
         let err = r.unwrap_err();
 
         assert_eq!(
             err.to_string(),
-            String::from(r#"PARSE_ERROR line "VAR1=value3" is not valid: duplicate variable name: VAR1"#)
+            String::from(
+                r#"PARSE_ERROR line "VAR1=value3" is not valid: duplicate variable name: VAR1"#
+            )
         );
     }
 
@@ -422,6 +430,4 @@ MIXED=prefix-$HOST-suffix",
         // HOST must not be interpolated into other values
         assert_ne!(vars.get("REF").map(String::as_str), Some("example.com"));
     }
-
 }
-

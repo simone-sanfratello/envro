@@ -1,3 +1,11 @@
+# install local tooling and git hooks
+setup:
+    ./scripts/setup.sh
+
+# update deps, format, and run tests
+maintenance:
+    ./scripts/maintenance.sh
+
 # run the tests
 test:
     cargo test --tests -- --nocapture
@@ -5,10 +13,6 @@ test:
 # run the tests with coverage
 test-coverage:
     cargo tarpaulin --tests --fail-under 100
-
-# update the dependencies to the latest version
-deps-update:
-    cargo upgrade -i allow && cargo update
 
 # run clippy
 format:
@@ -33,4 +37,3 @@ fix:
 # release: sync main, verify, bump (commitizen), push tags, publish
 release:
     ./scripts/release.sh
-

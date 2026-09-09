@@ -7,6 +7,12 @@ echo "==> checkout and pull main"
 git checkout main
 git pull origin main
 
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "error: working tree is not clean; commit or stash changes before release" >&2
+  git status --short >&2
+  exit 1
+fi
+
 echo "==> format check"
 cargo fmt --check
 

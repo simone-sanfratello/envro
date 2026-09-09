@@ -1,5 +1,8 @@
 # Envro
 
+[![Crates.io](https://img.shields.io/crates/v/envro.svg)](https://crates.io/crates/envro)
+[![docs.rs](https://img.shields.io/docsrs/envro)](https://docs.rs/envro)
+
 A crate to load environment variables from a `.env` file into the process environment.
 
 ### Getting started
@@ -153,3 +156,4 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+

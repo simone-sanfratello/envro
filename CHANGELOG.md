@@ -1,3 +1,11 @@
+## 0.7.0 (2026-09-09)
+
+### Feat
+
+- release recipe (#9)
+- add override_existing to load_dotenv_in_env_vars (#8)
+- add override_existing to load_dotenv_in_env_vars
+
 ## 0.6.0 (2025-11-28)
 
 ### Feat

@@ -29,3 +29,8 @@ watch :
 # fix all clippy warnings
 fix: 
     cargo fix --allow-dirty --allow-staged
+
+# release: sync main, verify, bump (commitizen), push tags, publish
+release:
+    ./scripts/release.sh
+

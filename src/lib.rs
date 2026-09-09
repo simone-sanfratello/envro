@@ -40,7 +40,7 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
         Err(err) => {
             return Err(EnvroError::File {
                 source: err,
-                file: String::from(file_name.to_str().unwrap_or("unknow file name")),
+                file: String::from(file_name.to_str().unwrap_or("unknown file name")),
             })
         }
     };
@@ -81,17 +81,31 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
             });
         }
 
+        // env::set_var panics on NUL in key or value
+        if var.contains('\0') {
+            return Err(EnvroError::Parse {
+                line: String::from(line),
+                reason: "variable name contains NUL byte".to_string(),
+            });
+        }
+        if value.contains('\0') {
+            return Err(EnvroError::Parse {
+                line: String::from(line),
+                reason: "value contains NUL byte".to_string(),
+            });
+        }
+
         // values with quotes
         if value.starts_with('"') {
-            if !value.ends_with('"') {
+            // Single `"` passes starts_with+ends_with but has no interior slice.
+            if value.len() < 2 || !value.ends_with('"') {
                 return Err(EnvroError::Parse {
                     line: String::from(line),
                     reason: "missing closing quote".to_string(),
                 });
             }
 
-            let v1 = value.get(1..value.len() - 1).unwrap();
-            value = String::from(v1).replace("\\\"", "\"");
+            value = value[1..value.len() - 1].replace("\\\"", "\"");
         }
 
         // Check for duplicate variable names
@@ -437,8 +451,46 @@ MIXED=prefix-$HOST-suffix",
         // HOST must not be interpolated into other values
         assert_ne!(vars.get("REF").map(String::as_str), Some("example.com"));
     }
+
+    #[test]
+    #[serial]
+    fn should_reject_lone_opening_quote_without_panic() {
+        let file_name = env::temp_dir().join(".env-lone-quote");
+        let mut file = File::create(&file_name).unwrap();
+        file.write_all(b"VAR=\"").unwrap();
+
+        let err = load_dotenv(file_name.as_path()).unwrap_err();
+        assert!(
+            err.to_string().contains("missing closing quote"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn should_reject_nul_in_value() {
+        let file_name = env::temp_dir().join(".env-nul-value");
+        let mut file = File::create(&file_name).unwrap();
+        file.write_all(b"VAR=a\0b").unwrap();
+
+        let err = load_dotenv(file_name.as_path()).unwrap_err();
+        assert!(
+            err.to_string().contains("value contains NUL byte"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn should_reject_nul_in_key() {
+        let file_name = env::temp_dir().join(".env-nul-key");
+        let mut file = File::create(&file_name).unwrap();
+        file.write_all(b"VA\0R=ok").unwrap();
+
+        let err = load_dotenv(file_name.as_path()).unwrap_err();
+        assert!(
+            err.to_string().contains("variable name contains NUL byte"),
+            "got: {err}"
+        );
+    }
 }
-
-
---- Cross-Source Hints ---
-  health://complexity/src/lib.rs#load_dotenv [health_hotspot] w=19.0

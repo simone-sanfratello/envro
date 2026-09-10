@@ -3,9 +3,7 @@ use std::io;
 use std::{env, fs, path::Path};
 
 mod validate;
-pub use validate::{
-    load_dotenv_validated, validate, validate_env, Field, Schema, ValidationIssue,
-};
+pub use validate::{load_dotenv_validated, validate, validate_env, Field, Schema, ValidationIssue};
 
 #[derive(Debug, thiserror::Error)]
 pub enum EnvroError {
@@ -50,7 +48,6 @@ fn line_closes_quote(s: &str) -> bool {
     }
     count % 2 == 0
 }
-
 
 /// load .env file into process.env var
 ///
@@ -137,9 +134,7 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
                 let mut closed = false;
                 i += 1;
                 while i < raw_lines.len() {
-                    let next = raw_lines[i]
-                        .strip_suffix('\r')
-                        .unwrap_or(raw_lines[i]);
+                    let next = raw_lines[i].strip_suffix('\r').unwrap_or(raw_lines[i]);
                     buf.push('\n');
                     if line_closes_quote(next) {
                         buf.push_str(&next[..next.len() - 1]);
@@ -628,16 +623,15 @@ third\"",
         let file_name = env::temp_dir().join(".env-multiline-unclosed");
         let mut file = File::create(&file_name).unwrap();
         // Opens on VAR2, never closes.
-        file.write_all(b"VAR1=1\nVAR2=\"start\nmiddle\nno close").unwrap();
+        file.write_all(b"VAR1=1\nVAR2=\"start\nmiddle\nno close")
+            .unwrap();
 
         let r = load_dotenv(file_name.as_path());
         let err = r.unwrap_err();
 
         assert_eq!(
             err.to_string(),
-            String::from(
-                r#"PARSE_ERROR line "VAR2=\"start" is not valid: missing closing quote"#
-            )
+            String::from(r#"PARSE_ERROR line "VAR2=\"start" is not valid: missing closing quote"#)
         );
     }
 
@@ -646,7 +640,8 @@ third\"",
     fn should_handle_crlf_line_endings_including_multiline() {
         let file_name = env::temp_dir().join(".env-crlf-multiline");
         let mut file = File::create(&file_name).unwrap();
-        file.write_all(b"A=1\r\nB=\"one\r\ntwo\"\r\nC=3\r\n").unwrap();
+        file.write_all(b"A=1\r\nB=\"one\r\ntwo\"\r\nC=3\r\n")
+            .unwrap();
 
         let vars = load_dotenv(file_name.as_path()).unwrap();
 

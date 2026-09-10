@@ -29,6 +29,20 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
 
+      - name: Fetch tags
+        run: git fetch --tags --force
+
+      # Commitizen incremental changelog (exit 16) requires a tag matching Cargo.toml version.
+      - name: Check version matches a git tag
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+          if ! git rev-parse -q --verify "refs/tags/${version}" >/dev/null; then
+            echo "error: Cargo.toml version ${version} has no git tag '${version}'" >&2
+            echo "latest tag: $(git describe --tags --abbrev=0 2>/dev/null || echo none)" >&2
+            echo "fix: set Cargo.toml back to the latest tag, or create the missing tag." >&2
+            exit 1
+          fi
+
       - name: Rust toolchain
         run: |
           rustup toolchain install stable --profile minimal --component rustfmt

@@ -1,3 +1,16 @@
+## 0.8.0 (2026-09-10)
+
+### Feat
+
+- publish from ci (#14)
+- validation (#13)
+
+### Fix
+
+- release (#17)
+- ci (#16)
+- publish (#12)
+
 ## 0.7.0 (2026-09-09)
 
 ### Feat

@@ -1,0 +1,86 @@
+# Mirrors `just release` on push to main:
+# verify → cz bump (commit + tag) → push → crates.io → GitHub Release
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    # Skip the bump commit itself (needed if a PAT is used to push).
+    if: ${{ !startsWith(github.event.head_commit.message, 'bump:') }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Format check
+        run: cargo fmt --check
+
+      - name: Tests
+        run: cargo test --tests -- --test-threads=1
+
+      - name: Install commitizen
+        run: pipx install commitizen
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version
+        id: bump
+        run: |
+          set +e
+          cz bump --dry-run --yes
+          status=$?
+          set -e
+          # 21 = NoneIncrementExit (no conventional commits to release)
+          if [[ "$status" -eq 21 ]]; then
+            echo "No releasable conventional commits since last tag; skipping publish."
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$status" -ne 0 ]]; then
+            exit "$status"
+          fi
+          cz bump --yes
+          echo "skipped=false" >> "$GITHUB_OUTPUT"
+          echo "tag=$(git describe --tags --exact-match HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Push bump commit and tags
+        if: steps.bump.outputs.skipped == 'false'
+        run: git push origin HEAD:main --follow-tags
+
+      - name: Publish to crates.io
+        if: steps.bump.outputs.skipped == 'false'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish
+
+      - name: Create GitHub Release
+        if: steps.bump.outputs.skipped == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.bump.outputs.tag }}" \
+            --title "${{ steps.bump.outputs.tag }}" \
+            --generate-notes

@@ -638,11 +638,6 @@ Features not implemented by design:
 - encryption
 - performance
 
-- github action publish
-  - publish crate - see https://github.com/googleapis/release-please
-    - run cz bump on CI, create release commit, create github release, cargo publish
-      - handle pre release (-dev, -beta ...)
-
 ---
 
 ## LICENSE

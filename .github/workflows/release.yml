@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -18,8 +19,9 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
-    # Skip the bump commit itself (needed if a PAT is used to push).
-    if: ${{ !startsWith(github.event.head_commit.message, 'bump:') }}
+    # Skip the bump commit itself on push (needed if a PAT is used to push).
+    # Always allow manual runs (workflow_dispatch has no head_commit).
+    if: ${{ github.event_name == 'workflow_dispatch' || !startsWith(github.event.head_commit.message, 'bump:') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -84,3 +86,4 @@ jobs:
           gh release create "${{ steps.bump.outputs.tag }}" \
             --title "${{ steps.bump.outputs.tag }}" \
             --generate-notes
+

@@ -14,31 +14,24 @@ Prefer the GitHub Action for routine releases. Use `just release` only for a loc
 
 ## Allow third-party Actions
 
-Workflows use `actions/checkout` and `dtolnay/rust-toolchain`. If you see:
+Workflows only need `actions/checkout` (Rust is installed with `rustup` on the runner, not via a third-party action).
 
-> The actions `actions/checkout@v4` and `dtolnay/rust-toolchain@stable` are not allowed … because all actions must be from a repository owned by `simone-sanfratello`
-
-the repo (or org) Actions policy is set to **owner-only**.
-
-### Fix
+If you see errors that actions are not allowed unless owned by `simone-sanfratello`:
 
 1. Open **Settings → Actions → General**  
    https://github.com/simone-sanfratello/envro/settings/actions
-2. Under **Actions permissions**, choose:
-   - **Allow simone-sanfratello, and select non-simone-sanfratello, actions and reusable workflows**
-3. Enable **Allow actions created by GitHub** (covers `actions/*`)
-4. Under **Allow specified actions and reusable workflows**, add:
+2. Under **Actions permissions**, pick whichever option your UI shows that is **not** owner-only, for example:
+   - **Allow all actions and reusable workflows**, or
+   - **Allow OWNER, and select non-OWNER, actions and reusable workflows** (wording varies; on some personal accounts the nested allowlist is missing — use **Allow all**)
+3. If an allowlist is available, enable **Allow actions created by GitHub** and/or add:
 
    ```text
    actions/*
-   dtolnay/rust-toolchain@*
    ```
 
-5. Save
+4. Save
 
-Alternatively choose **Allow all actions and reusable workflows** if you do not need an allowlist.
-
-Same setting is required for [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), which uses the same actions.
+You do **not** need to allow `dtolnay/rust-toolchain` anymore.
 
 ## Secrets
 
@@ -119,3 +112,4 @@ SKIP_RELEASE_GITHUB_TOKEN=1 ./scripts/setup-github-secrets.sh   # crates.io only
 ```
 
 Requires `gh` authenticated (`gh auth login`).
+

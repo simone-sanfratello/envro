@@ -24,7 +24,7 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || !startsWith(github.event.head_commit.message, 'bump:') }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
@@ -82,9 +82,12 @@ jobs:
           echo "skipped=false" >> "$GITHUB_OUTPUT"
           echo "tag=$(git describe --tags --exact-match HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Push bump commit and tags
+      - name: Push bump commit and tag
         if: steps.bump.outputs.skipped == 'false'
-        run: git push origin HEAD:main --follow-tags
+        run: |
+          # cz creates lightweight tags; --follow-tags only pushes annotated tags
+          git push origin HEAD:main
+          git push origin "refs/tags/${{ steps.bump.outputs.tag }}"
 
       - name: Publish to crates.io
         if: steps.bump.outputs.skipped == 'false'

@@ -29,10 +29,10 @@ Avoid the original [**dotenv**](https://crates.io/crates/dotenv) for new project
 | Treat empty process value as unset | yes (when `override_existing = false`) | no (empty counts as set) | configurable via sequence | no |
 | Reject duplicate keys in one file | yes | last wins (typical) | last wins / layered | last wins |
 | Variable substitution (`$VAR`) | no | yes | optional (off by default) | yes |
-| Multi-file layering | no | manual | yes | no |
+| Multi-file layering | no (by design) | manual | yes | no |
 | Multiline / richer quoting | double quotes + `\"` | yes | yes | yes |
 | `export` prefix | no | yes | yes | yes |
-| Compile-time macros | no | `dotenvy_macro` | `macros` feature | `dotenv_codegen` |
+| Compile-time macros | no (by design) | `dotenvy_macro` | `macros` feature | `dotenv_codegen` |
 | CLI runner | no | optional | optional | optional |
 | Maintenance | active (this crate) | popular; last crates.io release 2023 | active (2026 fork) | unmaintained |
 | Approx. downloads | small | ~161M total | ~7k (new) | ~62M total |
@@ -45,6 +45,8 @@ Avoid the original [**dotenv**](https://crates.io/crates/dotenv) for new project
 - Duplicate keys in the same file are a parse error.
 - With `override_existing = false`, non-empty process values win; unset **or empty** process values are filled from the file.
 - Format is intentionally small: `#` comments, empty values, double-quoted strings, `=` inside values. No `$` expansion, no `export`, no multi-file merge.
+- No multi-file layering: one path in, one parse — callers compose files themselves if they need overlays.
+- No compile-time macros: config is loaded at runtime so it stays decoupled from the application binary (same build, different env).
 
 ### dotenvy
 
@@ -84,7 +86,9 @@ Choose **envro** when you want:
 1. A small, explicit API (map vs process env).
 2. Duplicate-key rejection instead of silent last-wins.
 3. Empty process values treated like unset when not overriding.
+4. One file per call (no built-in multi-file layering).
+5. Runtime-only config (no values embedded at compile time).
 
-Choose **dotenvy** / **dotenv-ng** when you need substitution, multiline dialect compatibility, multi-file layering, macros, or a CLI.
+Choose **dotenvy** / **dotenv-ng** when you need substitution, multiline dialect compatibility, multi-file layering, compile-time macros, or a CLI.
 
 Choose **envy** / **figment** / **procenv** when the goal is typed application config rather than only loading a `.env` file.

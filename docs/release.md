@@ -12,6 +12,19 @@ The job skips when the head commit message starts with `bump:`, or when Commitiz
 
 Prefer the GitHub Action for routine releases. Use `just release` only for a local dry-run / emergency publish — otherwise you risk double-publishing.
 
+## Version must match the latest tag
+
+`update_changelog_on_bump` needs a git tag equal to the current `Cargo.toml` version. If they drift (for example version bumped in a PR without `cz bump`), release fails with:
+
+```text
+No tag found to do an incremental changelog
+Error: Process completed with exit code 16.
+```
+
+**Fix:** set `Cargo.toml` `version` back to the latest tag (`git describe --tags --abbrev=0`), then let the Release workflow bump it. Do not hand-edit the version in feature PRs.
+
+The Release workflow also fetches tags and checks this before running `cz bump`.
+
 ## Allow third-party Actions
 
 Workflows only need `actions/checkout` (Rust is installed with `rustup` on the runner, not via a third-party action).
@@ -112,4 +125,5 @@ SKIP_RELEASE_GITHUB_TOKEN=1 ./scripts/setup-github-secrets.sh   # crates.io only
 ```
 
 Requires `gh` authenticated (`gh auth login`).
+
 

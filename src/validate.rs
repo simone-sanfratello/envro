@@ -414,12 +414,7 @@ pub fn validate_env(schema: &Schema) -> Result<(), EnvroError> {
     }
 }
 
-fn validate_field(
-    key: &str,
-    field: &Field,
-    value: Option<&str>,
-    out: &mut Vec<ValidationIssue>,
-) {
+fn validate_field(key: &str, field: &Field, value: Option<&str>, out: &mut Vec<ValidationIssue>) {
     let present = matches!(value, Some(v) if !v.is_empty());
     if !present {
         if matches!(field.presence, Presence::Required) {
@@ -497,10 +492,7 @@ fn check_rule(key: &str, value: &str, rule: &Rule, out: &mut Vec<ValidationIssue
         }
         Rule::StartsWith(s) => {
             if !value.starts_with(s.as_str()) {
-                out.push(issue(
-                    "starts_with",
-                    format!("does not start with {s:?}"),
-                ));
+                out.push(issue("starts_with", format!("does not start with {s:?}")));
             }
         }
         Rule::EndsWith(s) => {
@@ -535,14 +527,8 @@ fn check_rule(key: &str, value: &str, rule: &Rule, out: &mut Vec<ValidationIssue
         },
         Rule::NonNegativeInteger => match value.parse::<i64>() {
             Ok(n) if n >= 0 => {}
-            Ok(_) => out.push(issue(
-                "non_negative_integer",
-                "must be >= 0".to_string(),
-            )),
-            Err(_) => out.push(issue(
-                "non_negative_integer",
-                "not an integer".to_string(),
-            )),
+            Ok(_) => out.push(issue("non_negative_integer", "must be >= 0".to_string())),
+            Err(_) => out.push(issue("non_negative_integer", "not an integer".to_string())),
         },
         Rule::Float => {
             if value.parse::<f64>().is_err() {
@@ -582,10 +568,7 @@ fn check_rule(key: &str, value: &str, rule: &Rule, out: &mut Vec<ValidationIssue
         },
         Rule::Boolean => {
             let l = value.to_ascii_lowercase();
-            if !matches!(
-                l.as_str(),
-                "true" | "false" | "1" | "0" | "yes" | "no"
-            ) {
+            if !matches!(l.as_str(), "true" | "false" | "1" | "0" | "yes" | "no") {
                 out.push(issue("boolean", "not a boolean".to_string()));
             }
         }
@@ -869,10 +852,7 @@ mod tests {
         assert!(validate(&vars(&[("P", "1")]), &schema).is_ok());
         assert!(validate(&vars(&[("P", "65535")]), &schema).is_ok());
         assert_eq!(issues(validate(&vars(&[("P", "0")]), &schema)).len(), 1);
-        assert_eq!(
-            issues(validate(&vars(&[("P", "70000")]), &schema)).len(),
-            1
-        );
+        assert_eq!(issues(validate(&vars(&[("P", "70000")]), &schema)).len(), 1);
         assert_eq!(issues(validate(&vars(&[("P", "x")]), &schema)).len(), 1);
     }
 
@@ -934,8 +914,12 @@ mod tests {
         let iss = issues(validate(&vars(&[("TAGS", "aa,,x")]), &schema));
         // two failures: empty part (required) + "x" too short
         assert_eq!(iss.len(), 2);
-        assert!(iss.iter().any(|i| i.key == "TAGS[1]" && i.rule == "required"));
-        assert!(iss.iter().any(|i| i.key == "TAGS[2]" && i.rule == "min_len"));
+        assert!(iss
+            .iter()
+            .any(|i| i.key == "TAGS[1]" && i.rule == "required"));
+        assert!(iss
+            .iter()
+            .any(|i| i.key == "TAGS[2]" && i.rule == "min_len"));
     }
 
     #[test]
@@ -962,10 +946,7 @@ mod tests {
         );
         assert!(validate(&vars(&[("T", "a,b")]), &schema).is_ok());
         assert!(validate(&vars(&[("T", "a,b,c")]), &schema).is_ok());
-        assert_eq!(
-            issues(validate(&vars(&[("T", "a")]), &schema)).len(),
-            1
-        );
+        assert_eq!(issues(validate(&vars(&[("T", "a")]), &schema)).len(), 1);
         assert_eq!(
             issues(validate(&vars(&[("T", "a,b,c,d")]), &schema)).len(),
             1
@@ -1032,11 +1013,19 @@ mod tests {
             &schema,
         ));
         assert_eq!(iss.len(), 6);
-        assert!(iss.iter().any(|i| i.key == "PI" && i.rule == "positive_integer"));
-        assert!(iss.iter().any(|i| i.key == "NNI" && i.rule == "non_negative_integer"));
+        assert!(iss
+            .iter()
+            .any(|i| i.key == "PI" && i.rule == "positive_integer"));
+        assert!(iss
+            .iter()
+            .any(|i| i.key == "NNI" && i.rule == "non_negative_integer"));
         assert!(iss.iter().any(|i| i.key == "IR" && i.rule == "int_range"));
-        assert!(iss.iter().any(|i| i.key == "PF" && i.rule == "positive_float"));
-        assert!(iss.iter().any(|i| i.key == "NNF" && i.rule == "non_negative_float"));
+        assert!(iss
+            .iter()
+            .any(|i| i.key == "PF" && i.rule == "positive_float"));
+        assert!(iss
+            .iter()
+            .any(|i| i.key == "NNF" && i.rule == "non_negative_float"));
         assert!(iss.iter().any(|i| i.key == "FR" && i.rule == "float_range"));
     }
 
@@ -1046,10 +1035,7 @@ mod tests {
         let schema = Schema::new()
             .field("PF", Field::required().positive_float())
             .field("NNF", Field::required().non_negative_float());
-        let iss = issues(validate(
-            &vars(&[("PF", "0.0"), ("NNF", "-0.5")]),
-            &schema,
-        ));
+        let iss = issues(validate(&vars(&[("PF", "0.0"), ("NNF", "-0.5")]), &schema));
         assert_eq!(iss.len(), 2);
         assert!(iss.iter().any(|i| i.rule == "positive_float"));
         assert!(iss.iter().any(|i| i.rule == "non_negative_float"));
@@ -1134,8 +1120,12 @@ mod tests {
             match err {
                 EnvroError::Validation { errors } => {
                     assert_eq!(errors.len(), 2);
-                    assert!(errors.iter().any(|i| i.key == "VE_A" && i.rule == "required"));
-                    assert!(errors.iter().any(|i| i.key == "VE_C" && i.rule == "required"));
+                    assert!(errors
+                        .iter()
+                        .any(|i| i.key == "VE_A" && i.rule == "required"));
+                    assert!(errors
+                        .iter()
+                        .any(|i| i.key == "VE_C" && i.rule == "required"));
                 }
                 other => panic!("expected Validation, got {other}"),
             }
@@ -1189,8 +1179,7 @@ mod tests {
         }
 
         // Missing file -> EnvroError::File propagated.
-        let err = load_dotenv_validated(Path::new("/nonexistent/.env-x"), &schema)
-            .unwrap_err();
+        let err = load_dotenv_validated(Path::new("/nonexistent/.env-x"), &schema).unwrap_err();
         assert!(matches!(err, EnvroError::File { .. }));
     }
 }

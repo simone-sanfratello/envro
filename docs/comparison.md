@@ -28,11 +28,11 @@ Avoid the original [**dotenv**](https://crates.io/crates/dotenv) for new project
 | Explicit override flag | yes (`override_existing`) | yes (`*_override` APIs) | yes (sequence / `--override`) | no (keep existing) |
 | Treat empty process value as unset | yes (when `override_existing = false`) | no (empty counts as set) | configurable via sequence | no |
 | Reject duplicate keys in one file | yes | last wins (typical) | last wins / layered | last wins |
-| Variable substitution (`$VAR`) | no | yes | optional (off by default) | yes |
+| Variable substitution (`$VAR`) | `${VAR}` only | yes | optional (off by default) | yes |
 | Multi-file layering | no (by design) | manual | yes | no |
 | Multiline / richer quoting | double quotes + `\"` | yes | yes | yes |
 | `export` prefix | no | yes | yes | yes |
-| Compile-time macros | no (by design) | `dotenvy_macro` | `macros` feature | `dotenv_codegen` |
+| Typed config derive | yes (`#[derive(Envro)]`, runtime values) | `dotenvy_macro` (bake values) | `macros` feature | `dotenv_codegen` |
 | CLI runner | no | optional | optional | optional |
 | Maintenance | active (this crate) | popular; last crates.io release 2023 | active (2026 fork) | unmaintained |
 | Approx. downloads | small | ~161M total | ~7k (new) | ~62M total |
@@ -41,12 +41,12 @@ Avoid the original [**dotenv**](https://crates.io/crates/dotenv) for new project
 
 ### envro
 
-- Two functions: `load_dotenv(path)` and `load_dotenv_in_env_vars(path, override_existing)`.
+- Load: `load_dotenv(path)` and `load_dotenv_in_env_vars(path, override_existing)`.
+- Validate: composable `Schema` / `Field` rules, or `#[derive(Envro)]` typed `Config`.
 - Duplicate keys in the same file are a parse error.
 - With `override_existing = false`, non-empty process values win; unset **or empty** process values are filled from the file.
-- Format is intentionally small: `#` comments, empty values, double-quoted strings, `=` inside values. No `$` expansion, no `export`, no multi-file merge.
-- No multi-file layering: one path in, one parse — callers compose files themselves if they need overlays.
-- No compile-time macros: config is loaded at runtime so it stays decoupled from the application binary (same build, different env).
+- Format is intentionally small: `#` comments, empty values, double-quoted strings, `=` inside values, `${VAR}` substitution. No `export`, no multi-file merge.
+- Derive encodes types/rules only — env **values** are never embedded at compile time.
 
 ### dotenvy
 
@@ -77,7 +77,7 @@ Avoid the original [**dotenv**](https://crates.io/crates/dotenv) for new project
 | [**envstack**](https://crates.io/crates/envstack) | Layered env + TOML (+ clap) with typed extract. |
 | [**rust_dotenv**](https://crates.io/crates/rust_dotenv) / [**loadenv**](https://crates.io/crates/loadenv) | Smaller alternative loaders; much less adoption than dotenvy. |
 | [**dotenvage**](https://crates.io/crates/dotenvage) | `.env` plus age encryption for secrets. |
-| [**load-dotenv**](https://crates.io/crates/load-dotenv) | Compile-time procedural macro to load `.env` while building. |
+| [**load-dotenv**](https://crates.io/crates/load-dotenv) | Compile-time procedural macro to load `.env` while building (bakes values into the binary). |
 
 ## Where envro fits
 
@@ -87,8 +87,9 @@ Choose **envro** when you want:
 2. Duplicate-key rejection instead of silent last-wins.
 3. Empty process values treated like unset when not overriding.
 4. One file per call (no built-in multi-file layering).
-5. Runtime-only config (no values embedded at compile time).
+5. Runtime-only **values** (optional `#[derive(Envro)]` for types/rules; no baked-in secrets).
 
-Choose **dotenvy** / **dotenv-ng** when you need substitution, multiline dialect compatibility, multi-file layering, compile-time macros, or a CLI.
+Choose **dotenvy** / **dotenv-ng** when you need substitution dialects, multi-file layering, or a CLI.
 
-Choose **envy** / **figment** / **procenv** when the goal is typed application config rather than only loading a `.env` file.
+Choose **envy** / **figment** / **procenv** when you want Serde/layered config stacks beyond envro’s rule set. Envro’s derive is closer to “Schema + typed fields” than to envy’s Serde mapping.
+

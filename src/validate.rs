@@ -561,14 +561,13 @@ fn check_rule(key: &str, value: &str, rule: &Rule, out: &mut Vec<ValidationIssue
             )),
             Err(_) => out.push(issue("float_range", "not a float".to_string())),
         },
-        Rule::Port => match value.parse::<u32>() {
-            Ok(n) if (1..=65535).contains(&n) => {}
-            Ok(n) => out.push(issue("port", format!("{} not in 1..=65535", n))),
-            Err(_) => out.push(issue("port", "not a number".to_string())),
-        },
+        Rule::Port => {
+            if let Err(e) = crate::coerce::parse_port_u16(value) {
+                out.push(issue("port", e));
+            }
+        }
         Rule::Boolean => {
-            let l = value.to_ascii_lowercase();
-            if !matches!(l.as_str(), "true" | "false" | "1" | "0" | "yes" | "no") {
+            if crate::coerce::parse_bool(value).is_err() {
                 out.push(issue("boolean", "not a boolean".to_string()));
             }
         }

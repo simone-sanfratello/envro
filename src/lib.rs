@@ -46,7 +46,147 @@ fn line_closes_quote(s: &str) -> bool {
             }
         }
     }
-    count % 2 == 0
+    count.is_multiple_of(2)
+}
+
+fn is_var_name_start(c: u8) -> bool {
+    c.is_ascii_alphabetic() || c == b'_'
+}
+
+fn is_var_name_continue(c: u8) -> bool {
+    c.is_ascii_alphanumeric() || c == b'_'
+}
+
+/// Collect `${NAME}` refs in `s`, ignoring `\${`.
+fn var_refs_in(s: &str) -> Vec<String> {
+    let bytes = s.as_bytes();
+    let mut refs = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'\\' && i + 2 < bytes.len() && bytes[i + 1] == b'$' && bytes[i + 2] == b'{'
+        {
+            i += 3;
+            continue;
+        }
+        if bytes[i] == b'$' && i + 1 < bytes.len() && bytes[i + 1] == b'{' {
+            let name_start = i + 2;
+            let mut j = name_start;
+            while j < bytes.len() && bytes[j] != b'}' {
+                j += 1;
+            }
+            if j < bytes.len() {
+                let name = &s[name_start..j];
+                if !name.is_empty()
+                    && is_var_name_start(name.as_bytes()[0])
+                    && name.as_bytes()[1..]
+                        .iter()
+                        .copied()
+                        .all(is_var_name_continue)
+                {
+                    refs.push(name.to_string());
+                }
+                i = j + 1;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    refs
+}
+
+/// Expand `${VAR}` using `known` file vars, then process env.
+///
+/// - Bare `$` is always literal
+/// - `\${` → literal `${` (skip replacement)
+/// - Known key → its value; missing → `""`
+/// - Name must match `[A-Za-z_][A-Za-z0-9_]*`
+fn substitute_vars(input: &str, known: &EnvroVars) -> String {
+    let bytes = input.as_bytes();
+    let mut out = String::with_capacity(input.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'\\' && i + 2 < bytes.len() && bytes[i + 1] == b'$' && bytes[i + 2] == b'{'
+        {
+            out.push_str("${");
+            i += 3;
+            continue;
+        }
+
+        if bytes[i] == b'$' && i + 1 < bytes.len() && bytes[i + 1] == b'{' {
+            let name_start = i + 2;
+            let mut j = name_start;
+            while j < bytes.len() && bytes[j] != b'}' {
+                j += 1;
+            }
+            if j >= bytes.len() {
+                out.push_str(&input[i..]);
+                break;
+            }
+            let name = &input[name_start..j];
+            let name_ok = !name.is_empty()
+                && is_var_name_start(name.as_bytes()[0])
+                && name.as_bytes()[1..]
+                    .iter()
+                    .copied()
+                    .all(is_var_name_continue);
+            if name_ok {
+                if let Some(val) = known.get(name) {
+                    out.push_str(val);
+                } else if let Ok(val) = env::var(name) {
+                    out.push_str(&val);
+                }
+                // else: unknown → empty
+            }
+            // Invalid / empty `${}` → empty (same as unknown).
+            // Use `\${` to keep a literal `${`.
+            i = j + 1;
+            continue;
+        }
+
+        out.push(bytes[i] as char);
+        i += 1;
+    }
+    out
+}
+
+/// Resolve `${VAR}` refs so definition order does not matter.
+///
+/// Keys are expanded only once all of their in-file dependencies are resolved.
+/// Cycles (and anything left after that) expand with missing in-file refs as `""`.
+fn resolve_vars(raw: &EnvroVars) -> EnvroVars {
+    let mut resolved = EnvroVars::with_capacity(raw.len());
+    let mut pending: Vec<String> = raw.keys().cloned().collect();
+
+    while !pending.is_empty() {
+        let mut progress = false;
+        let mut still = Vec::new();
+        for key in pending {
+            let raw_val = raw.get(&key).unwrap();
+            let ready = var_refs_in(raw_val).iter().all(|r| {
+                // Env-only refs are always ready; in-file refs must be resolved.
+                !raw.contains_key(r) || resolved.contains_key(r)
+            });
+            if ready {
+                resolved.insert(key, substitute_vars(raw_val, &resolved));
+                progress = true;
+            } else {
+                still.push(key);
+            }
+        }
+        if !progress {
+            // Cycles: expand against a snapshot that omits still-pending keys
+            // so refs into the cycle become empty.
+            let frozen = resolved.clone();
+            for key in still {
+                let raw_val = raw.get(&key).unwrap();
+                resolved.insert(key, substitute_vars(raw_val, &frozen));
+            }
+            break;
+        }
+        pending = still;
+    }
+
+    resolved
 }
 
 /// load .env file into process.env var
@@ -169,11 +309,13 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
             });
         }
 
+        // Store raw values first; `${VAR}` is resolved after the whole file
+        // is parsed so definition order does not matter.
         vars.insert(var, value);
         i += 1;
     }
 
-    Ok(vars)
+    Ok(resolve_vars(&vars))
 }
 
 /// Load vars from an env file into process environment variables.
@@ -198,7 +340,7 @@ pub fn load_dotenv_in_env_vars(
 
     for (key, value) in vars {
         if !override_existing {
-            if let Some(current) = env::var(&key).ok() {
+            if let Ok(current) = env::var(&key) {
                 if !current.is_empty() {
                     continue;
                 }
@@ -472,17 +614,103 @@ mod tests {
 
     #[test]
     #[serial]
-    fn should_keep_dollar_signs_literal_without_substitution() {
-        // Would be mangled by dotenv/dotenvy-style $VAR expansion (e.g. bcrypt hashes).
+    fn should_substitute_braced_vars_from_file_and_env() {
+        env::remove_var("ENVRO_TEST_FROM_ENV");
+        env::set_var("ENVRO_TEST_FROM_ENV", "from-env");
+
+        let file_name = env::temp_dir().join(".env-dollar-sub");
+        let mut file = File::create(&file_name).unwrap();
+        file.write_all(
+            b"HOST=example.com\n\
+BARE=$HOST\n\
+BRACE=${HOST}\n\
+MIXED=prefix-${HOST}-suffix\n\
+QUOTED=\"url://${HOST}/path\"\n\
+FROM_ENV=${ENVRO_TEST_FROM_ENV}\n\
+ESCAPED=\\${HOST}\n\
+UNKNOWN=${DOES_NOT_EXIST}",
+        )
+        .unwrap();
+
+        let vars = load_dotenv(file_name.as_path()).unwrap();
+
+        // Bare $HOST is never expanded — `$` is a normal character.
+        assert_eq!(vars.get("BARE").map(String::as_str), Some("$HOST"));
+        assert_eq!(vars.get("BRACE").map(String::as_str), Some("example.com"));
+        assert_eq!(
+            vars.get("MIXED").map(String::as_str),
+            Some("prefix-example.com-suffix")
+        );
+        assert_eq!(
+            vars.get("QUOTED").map(String::as_str),
+            Some("url://example.com/path")
+        );
+        assert_eq!(vars.get("FROM_ENV").map(String::as_str), Some("from-env"));
+        // `\${HOST}` skips replacement → literal `${HOST}`
+        assert_eq!(vars.get("ESCAPED").map(String::as_str), Some("${HOST}"));
+        // Unknown `${VAR}` → empty string
+        assert_eq!(vars.get("UNKNOWN").map(String::as_str), Some(""));
+
+        env::remove_var("ENVRO_TEST_FROM_ENV");
+    }
+
+    #[test]
+    #[serial]
+    fn should_treat_empty_braces_as_empty_unless_escaped() {
+        let file_name = env::temp_dir().join(".env-dollar-empty-braces");
+        let mut file = File::create(&file_name).unwrap();
+        file.write_all(
+            b"EMPTY=${}\n\
+AROUND=pre${}post\n\
+ESCAPED=\\${}\n\
+ESCAPED_AROUND=pre\\${}post\n\
+INVALID=${123}\n\
+INVALID_NAME=${bad-name}",
+        )
+        .unwrap();
+
+        let vars = load_dotenv(file_name.as_path()).unwrap();
+
+        // `${}` → empty
+        assert_eq!(vars.get("EMPTY").map(String::as_str), Some(""));
+        assert_eq!(vars.get("AROUND").map(String::as_str), Some("prepost"));
+        // `\${}` → no replace
+        assert_eq!(vars.get("ESCAPED").map(String::as_str), Some("${}"));
+        assert_eq!(
+            vars.get("ESCAPED_AROUND").map(String::as_str),
+            Some("pre${}post")
+        );
+        // invalid braces also → empty
+        assert_eq!(vars.get("INVALID").map(String::as_str), Some(""));
+        assert_eq!(vars.get("INVALID_NAME").map(String::as_str), Some(""));
+    }
+
+    #[test]
+    #[serial]
+    fn should_keep_unclosed_brace_ref_literal() {
+        let file_name = env::temp_dir().join(".env-dollar-unclosed");
+        let mut file = File::create(&file_name).unwrap();
+        // No closing `}` — the `${HOST` tail is kept literal.
+        file.write_all(b"A=pre${HOST\nB=ok").unwrap();
+
+        let vars = load_dotenv(file_name.as_path()).unwrap();
+
+        assert_eq!(vars.get("A").map(String::as_str), Some("pre${HOST"));
+        assert_eq!(vars.get("B").map(String::as_str), Some("ok"));
+    }
+
+    #[test]
+    #[serial]
+    fn should_keep_bare_dollar_signs_literal() {
         let file_name = env::temp_dir().join(".env-dollar-literal");
         let mut file = File::create(&file_name).unwrap();
         file.write_all(
             b"HOST=example.com\n\
 PASSWORD_HASH=$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy\n\
 REF=$HOST\n\
-BRACE=${HOST}\n\
 QUOTED=\"cost=$2a$10$abc\"\n\
-MIXED=prefix-$HOST-suffix",
+DOLLAR_ONLY=$\n\
+DIGIT=$1",
         )
         .unwrap();
 
@@ -493,17 +721,53 @@ MIXED=prefix-$HOST-suffix",
             Some("$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy")
         );
         assert_eq!(vars.get("REF").map(String::as_str), Some("$HOST"));
-        assert_eq!(vars.get("BRACE").map(String::as_str), Some("${HOST}"));
         assert_eq!(
             vars.get("QUOTED").map(String::as_str),
             Some("cost=$2a$10$abc")
         );
-        assert_eq!(
-            vars.get("MIXED").map(String::as_str),
-            Some("prefix-$HOST-suffix")
-        );
-        // HOST must not be interpolated into other values
-        assert_ne!(vars.get("REF").map(String::as_str), Some("example.com"));
+        assert_eq!(vars.get("DOLLAR_ONLY").map(String::as_str), Some("$"));
+        assert_eq!(vars.get("DIGIT").map(String::as_str), Some("$1"));
+    }
+
+    #[test]
+    #[serial]
+    fn should_resolve_vars_regardless_of_order() {
+        let file_name = env::temp_dir().join(".env-dollar-order");
+        let mut file = File::create(&file_name).unwrap();
+        // A references B before B is defined — must still expand.
+        file.write_all(b"A=abc${B}\nB=123").unwrap();
+
+        let vars = load_dotenv(file_name.as_path()).unwrap();
+
+        assert_eq!(vars.get("A").map(String::as_str), Some("abc123"));
+        assert_eq!(vars.get("B").map(String::as_str), Some("123"));
+    }
+
+    #[test]
+    #[serial]
+    fn should_resolve_forward_and_chained_references() {
+        let file_name = env::temp_dir().join(".env-dollar-chain");
+        let mut file = File::create(&file_name).unwrap();
+        file.write_all(b"A=${B}${C}\nB=${C}\nC=x").unwrap();
+
+        let vars = load_dotenv(file_name.as_path()).unwrap();
+
+        assert_eq!(vars.get("A").map(String::as_str), Some("xx"));
+        assert_eq!(vars.get("B").map(String::as_str), Some("x"));
+        assert_eq!(vars.get("C").map(String::as_str), Some("x"));
+    }
+
+    #[test]
+    #[serial]
+    fn should_resolve_cycles_to_empty() {
+        let file_name = env::temp_dir().join(".env-dollar-cycle");
+        let mut file = File::create(&file_name).unwrap();
+        file.write_all(b"A=${B}\nB=${A}").unwrap();
+
+        let vars = load_dotenv(file_name.as_path()).unwrap();
+
+        assert_eq!(vars.get("A").map(String::as_str), Some(""));
+        assert_eq!(vars.get("B").map(String::as_str), Some(""));
     }
 
     #[test]

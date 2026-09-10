@@ -2,8 +2,34 @@ use std::collections::HashMap;
 use std::io;
 use std::{env, fs, path::Path};
 
+pub mod coerce;
 mod validate;
+
+pub use coerce::Value;
 pub use validate::{load_dotenv_validated, validate, validate_env, Field, Schema, ValidationIssue};
+
+pub use envro_derive::Envro;
+
+/// Typed config loaded from env vars via `#[derive(Envro)]`.
+///
+/// The derive encodes field **types** and validation **rules** only; values are
+/// always read at runtime from a map, a `.env` file, or the process environment.
+pub trait EnvroConfig: Sized {
+    /// Schema generated from field types and `#[envro(...)]` attributes.
+    fn schema() -> Schema;
+
+    /// Validate and coerce from an in-memory map.
+    fn from_vars(vars: &EnvroVars) -> Result<Self, EnvroError>;
+
+    /// Load a `.env` file, then [`from_vars`](Self::from_vars).
+    fn from_dotenv(path: &Path) -> Result<Self, EnvroError> {
+        let vars = load_dotenv(path)?;
+        Self::from_vars(&vars)
+    }
+
+    /// Read schema keys from the process environment, then coerce.
+    fn from_env() -> Result<Self, EnvroError>;
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum EnvroError {
@@ -221,98 +247,88 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
         let raw = raw_lines[i].strip_suffix('\r').unwrap_or(raw_lines[i]);
         let line = raw.trim();
 
-        if line.is_empty() {
+        if line.is_empty() || line.starts_with('#') {
             i += 1;
-            continue;
-        }
-        if line.starts_with('#') {
-            i += 1;
-            continue;
-        }
+        } else {
+            let eq_idx = line.find('=').ok_or_else(|| EnvroError::Parse {
+                line: String::from(line),
+                reason: "missing value".to_string(),
+            })?;
 
-        let eq_idx = match line.find('=') {
-            Some(idx) => idx,
-            None => {
+            let var = String::from(&line[..eq_idx]);
+            let mut value = String::from(&line[eq_idx + 1..]);
+
+            if var.is_empty() {
                 return Err(EnvroError::Parse {
                     line: String::from(line),
-                    reason: "missing value".to_string(),
+                    reason: "missing variable name".to_string(),
                 });
             }
-        };
 
-        let var = String::from(&line[..eq_idx]);
-        let mut value = String::from(&line[eq_idx + 1..]);
-
-        if var.is_empty() {
-            return Err(EnvroError::Parse {
-                line: String::from(line),
-                reason: "missing variable name".to_string(),
-            });
-        }
-
-        // env::set_var panics on NUL in the key.
-        if var.contains('\0') {
-            return Err(EnvroError::Parse {
-                line: String::from(line),
-                reason: "variable name contains NUL byte".to_string(),
-            });
-        }
-
-        // Preserve the first line for error messages before we advance.
-        let first_line = String::from(line);
-
-        // Quoted values may span multiple lines. If the first line opens a
-        // quote but does not close it, we accumulate subsequent lines with
-        // '\n' between them until we find a line ending with the closing
-        // quote. Single-line quoted values behave exactly as before.
-        if value.starts_with('"') {
-            let single_line_closed = value.len() >= 2 && line_closes_quote(&value);
-            if single_line_closed {
-                value = value[1..value.len() - 1].replace("\\\"", "\"");
-            } else {
-                let mut buf = String::from(&value[1..]);
-                let mut closed = false;
-                i += 1;
-                while i < raw_lines.len() {
-                    let next = raw_lines[i].strip_suffix('\r').unwrap_or(raw_lines[i]);
-                    buf.push('\n');
-                    if line_closes_quote(next) {
-                        buf.push_str(&next[..next.len() - 1]);
-                        closed = true;
-                        break;
-                    }
-                    buf.push_str(next);
-                    i += 1;
-                }
-                if !closed {
-                    return Err(EnvroError::Parse {
-                        line: first_line,
-                        reason: "missing closing quote".to_string(),
-                    });
-                }
-                value = buf.replace("\\\"", "\"");
+            // env::set_var panics on NUL in the key.
+            if var.contains('\0') {
+                return Err(EnvroError::Parse {
+                    line: String::from(line),
+                    reason: "variable name contains NUL byte".to_string(),
+                });
             }
-        }
 
-        if value.contains('\0') {
-            return Err(EnvroError::Parse {
-                line: first_line,
-                reason: "value contains NUL byte".to_string(),
-            });
-        }
+            // Preserve the first line for error messages before we advance.
+            let first_line = String::from(line);
 
-        // Reject duplicate variable names in the same file.
-        if vars.contains_key(&var) {
-            return Err(EnvroError::Parse {
-                line: first_line,
-                reason: format!("duplicate variable name: {}", var),
-            });
-        }
+            // Quoted values may span multiple lines. If the first line opens a
+            // quote but does not close it, we accumulate subsequent lines with
+            // '\n' between them until we find a line ending with the closing
+            // quote. Single-line quoted values behave exactly as before.
+            if value.starts_with('"') {
+                let single_line_closed = value.len() >= 2 && line_closes_quote(&value);
+                if single_line_closed {
+                    value = value[1..value.len() - 1].replace("\\\"", "\"");
+                } else {
+                    let mut buf = String::from(&value[1..]);
+                    let mut closed = false;
+                    i += 1;
+                    while i < raw_lines.len() {
+                        let next = raw_lines[i].strip_suffix('\r').unwrap_or(raw_lines[i]);
+                        buf.push('\n');
+                        if line_closes_quote(next) {
+                            buf.push_str(&next[..next.len() - 1]);
+                            closed = true;
+                            break;
+                        }
+                        buf.push_str(next);
+                        i += 1;
+                    }
+                    if !closed {
+                        return Err(EnvroError::Parse {
+                            line: first_line,
+                            reason: "missing closing quote".to_string(),
+                        });
+                    }
+                    value = buf.replace("\\\"", "\"");
+                }
+            }
 
-        // Store raw values first; `${VAR}` is resolved after the whole file
-        // is parsed so definition order does not matter.
-        vars.insert(var, value);
-        i += 1;
+            if value.contains('\0') {
+                return Err(EnvroError::Parse {
+                    line: first_line,
+                    reason: "value contains NUL byte".to_string(),
+                });
+            }
+
+            // Reject duplicate variable names in the same file.
+            if vars.contains_key(&var) {
+                return Err(EnvroError::Parse {
+                    line: first_line,
+                    reason: format!("duplicate variable name: {}", var),
+                });
+            }
+
+            // Store raw values first; `${VAR}` is resolved after the whole file
+            // is parsed so definition order does not matter.
+            vars.insert(var, value);
+            i += 1;
+        }
     }
 
     Ok(resolve_vars(&vars))

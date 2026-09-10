@@ -1,3 +1,7 @@
+[workspace]
+members = [".", "envro-derive", "example"]
+resolver = "2"
+
 [package]
 name = "envro"
 version = "0.9.0"
@@ -12,12 +16,9 @@ include = [
   "CHANGELOG.md",
 ]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 thiserror = "^2.0.20"
+envro-derive = { path = "envro-derive", version = "0.9.0" }
 
 [dev-dependencies]
 serial_test = "^4.0.1"
-
-

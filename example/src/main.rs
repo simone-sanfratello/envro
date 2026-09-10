@@ -9,33 +9,40 @@
 use std::env;
 use std::process;
 
-use envro::*;
+use envro::{Envro, EnvroConfig};
+
+#[derive(Debug, Envro)]
+struct Config {
+    #[envro(from = "PG_USER", min_len = 1, max_len = 63, alphanumeric)]
+    pg_user: String,
+
+    #[envro(from = "PG_PASS", min_len = 6)]
+    pg_pass: String,
+
+    #[envro(from = "PG_HOST", min_len = 1, max_len = 253)]
+    pg_host: String,
+
+    #[envro(from = "PG_PORT", port)]
+    pg_port: u16,
+
+    #[envro(from = "PG_DB", min_len = 1, alphanumeric)]
+    pg_db: String,
+
+    #[envro(from = "PG_SSLMODE", one_of("disable", "require", "verify-full"))]
+    pg_sslmode: String,
+
+    #[envro(from = "DATABASE_URI", min_len = 1, starts_with = "pg://")]
+    database_uri: String,
+
+    #[envro(from = "DB_POOL_SIZE", positive_integer)]
+    db_pool_size: i64,
+}
 
 fn main() {
     let env_file = env::current_dir().unwrap().join(".env-sample");
 
-    // Validate each piece on its own, then use the composed URI.
-    let schema = Schema::new()
-        .field(
-            "PG_USER",
-            Field::required().min_len(1).max_len(63).alphanumeric(),
-        )
-        .field("PG_PASS", Field::required().min_len(6))
-        .field("PG_HOST", Field::required().min_len(1).max_len(253))
-        .field("PG_PORT", Field::required().port())
-        .field("PG_DB", Field::required().min_len(1).alphanumeric())
-        .field(
-            "PG_SSLMODE",
-            Field::required().one_of(&["disable", "require", "verify-full"]),
-        )
-        .field(
-            "DATABASE_URI",
-            Field::required().min_len(1).starts_with("pg://"),
-        )
-        .field("DB_POOL_SIZE", Field::required().positive_integer());
-
-    let vars = match load_dotenv_validated(&env_file, &schema) {
-        Ok(v) => v,
+    let config = match Config::from_dotenv(&env_file) {
+        Ok(c) => c,
         Err(err) => {
             eprintln!("validation failed: {err}");
             process::exit(1);
@@ -43,21 +50,13 @@ fn main() {
     };
 
     println!("parts:");
-    for key in [
-        "PG_USER",
-        "PG_PASS",
-        "PG_HOST",
-        "PG_PORT",
-        "PG_DB",
-        "PG_SSLMODE",
-    ] {
-        println!("  {key}={}", vars.get(key).unwrap());
-    }
-
+    println!("  PG_USER={}", config.pg_user);
+    println!("  PG_PASS={}", config.pg_pass);
+    println!("  PG_HOST={}", config.pg_host);
+    println!("  PG_PORT={}", config.pg_port);
+    println!("  PG_DB={}", config.pg_db);
+    println!("  PG_SSLMODE={}", config.pg_sslmode);
     println!();
-    println!(
-        "DATABASE_URI={}",
-        vars.get("DATABASE_URI").unwrap()
-    );
-    println!("DB_POOL_SIZE={}", vars.get("DB_POOL_SIZE").unwrap());
+    println!("DATABASE_URI={}", config.database_uri);
+    println!("DB_POOL_SIZE={}", config.db_pool_size);
 }

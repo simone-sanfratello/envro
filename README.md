@@ -3,14 +3,15 @@
 [![Crates.io](https://img.shields.io/crates/v/envro.svg)](https://crates.io/crates/envro)
 [![docs.rs](https://img.shields.io/docsrs/envro)](https://docs.rs/envro)
 
-Env vars for Rust: parse `.env` files, load them into `std::env`, and validate values with a composable rule set.
+Env vars for Rust: parse `.env` files, load them into `std::env`, validate with a composable rule set, and optionally derive a typed `Config`.
 
 ## Features
 
 - **Parse** a `.env` file to a `HashMap` — no side effects on the process.
 - **Load** a `.env` file into the process environment with an explicit override policy.
 - **Validate** env vars against a `Schema` of composable rules. Validation is fully decoupled from loading: it works on any `HashMap`, on a `.env` file, or on the live process environment.
-- **Small `.env` dialect**: `#` comments, empty values, double-quoted strings (with multi-line support), `=` inside values, `${VAR}` substitution (bare `$` literal; `\${VAR}` to skip), duplicate keys rejected.
+- **Derive** a typed `Config` with `#[derive(Envro)]` — field types are the coerce targets; `#[envro(...)]` attrs are the rules. Values still load at runtime.
+- **Small `.env` dialect** to support comments, multiline values, quotes and so on.
 
 ## Getting started
 
@@ -20,18 +21,40 @@ cargo add envro
 
 ```rust
 use std::env;
-use envro::*;
+use envro::{load_dotenv_in_env_vars, Envro, EnvroConfig, EnvroError};
 
-fn main() {
-    let env_file = env::current_dir().unwrap().join(".env");
+#[derive(Envro, Debug)]
+struct Config {
+    #[envro(from = "APP_NAME", min_len = 1, max_len = 64)]
+    app_name: String,
 
-    // parse only
-    let vars = load_dotenv(&env_file).unwrap();
+    #[envro(from = "APP_PORT", port)]
+    app_port: u16,
 
-    // parse and set process env (keep existing non-empty values)
-    load_dotenv_in_env_vars(&env_file, false).unwrap();
+    #[envro(from = "DATABASE_URL", min_len = 1, starts_with = "postgres://")]
+    database_url: String,
 
-    println!("{vars:#?}");
+    #[envro(from = "DB_POOL_SIZE", positive_integer)]
+    db_pool_size: i64,
+
+    #[envro(from = "LOG_LEVEL", one_of("debug", "info", "warn", "error"))]
+    log_level: String,
+
+    #[envro(from = "FEATURE_METRICS", boolean)]
+    feature_metrics: bool,
+}
+
+fn main() -> Result<(), EnvroError> {
+    let env_file = env::current_dir()?.join(".env");
+
+    // load .env into process env when the file exists (keep existing non-empty values)
+    if env_file.is_file() {
+        load_dotenv_in_env_vars(&env_file, false)?;
+    }
+
+    let config = Config::from_env()?;
+    println!("{config:?}");
+    Ok(())
 }
 ```
 
@@ -111,6 +134,30 @@ environment. Envro collects every failing rule and returns them all at once.
 - Every `Field` starts as `Field::required()` or `Field::optional()`, then chains rules.
 - Envro collects **every** failing rule across every field before returning a single `EnvroError::Validation`.
 - Validation is decoupled from where the vars come from: pass a `HashMap`, load from a `.env` file, or read directly from the process environment.
+
+Same knobs as [Getting started](#getting-started), without the derive:
+
+```rust
+use envro::*;
+
+let schema = Schema::new()
+    .field("APP_NAME", Field::required().min_len(1).max_len(64))
+    .field("APP_PORT", Field::required().port())
+    .field(
+        "DATABASE_URL",
+        Field::required().min_len(1).starts_with("postgres://"),
+    )
+    .field("DB_POOL_SIZE", Field::required().positive_integer())
+    .field(
+        "LOG_LEVEL",
+        Field::required().one_of(&["debug", "info", "warn", "error"]),
+    )
+    .field("FEATURE_METRICS", Field::required().boolean());
+
+validate_env(&schema)?;
+```
+
+Prefer `#[derive(Envro)]` when you also want typed fields — see [Typed Config](#typed-config-deriveenvro). Hand-written `Schema` stays useful for maps, tests, and validating without a struct.
 
 ### Sources
 
@@ -701,16 +748,66 @@ Anything a `.env` file rejects surfaces as `EnvroError::Parse`; unreadable /
 missing files surface as `EnvroError::File`. See [Validation](#validation) for
 `EnvroError::Validation`.
 
+## Typed `Config` (`#[derive(Envro)]`)
+
+Single source of truth: Rust field types are the coerce targets; `#[envro(...)]`
+attributes are the validation rules. **Values are never baked into the binary** —
+they still load at runtime from a `.env` file, a map, or the process environment.
+
+Supported field types: `String`, `bool`, `i32`, `i64`, `u16`, `u32`, `u64`,
+`f32`, `f64`, and `Option<T>` of those (optional presence).
+
+Default env key: screaming-snake of the field name (`retry_count` → `RETRY_COUNT`).
+Override with `from = "KEY"`.
+
+```rust
+use envro::{Envro, EnvroConfig};
+
+#[derive(Envro)]
+struct Config {
+    #[envro(from = "APP_NAME", min_len = 3, max_len = 64)]
+    app_name: String,
+
+    #[envro(from = "PORT", port)]
+    port: u16,
+
+    #[envro(from = "OFFSET", integer)]
+    offset: Option<i64>,
+
+    #[envro(from = "FEATURE_X", boolean)]
+    feature_x: bool,
+}
+
+fn main() -> Result<(), envro::EnvroError> {
+    let config = Config::from_dotenv(&std::env::current_dir()?.join(".env"))?;
+    // or: Config::from_vars(&vars)?;  Config::from_env()?;
+    println!("{} listens on {}", config.app_name, config.port);
+    Ok(())
+}
+```
+
+Generated API (via [`EnvroConfig`](https://docs.rs/envro/latest/envro/trait.EnvroConfig.html)):
+
+- `Config::schema() -> Schema`
+- `Config::from_vars(&EnvroVars) -> Result<Self, EnvroError>`
+- `Config::from_dotenv(&Path) -> Result<Self, EnvroError>`
+- `Config::from_env() -> Result<Self, EnvroError>`
+
+Common `#[envro(...)]` rules mirror [`Field`](#rule-reference): flags such as
+`port`, `boolean`, `integer`, `positive_integer`, `email`, … and keyed forms
+`min_len = n`, `max_len = n`, `starts_with = "..."`, `one_of("a", "b")`,
+`int_range(1, 100)`, etc. The hand-written `Schema` / `Field` API remains fully
+supported.
+
 ## Out of scope
 
 Features not implemented by design:
 
 - **No multi-file layering** — composable configs are avoided; one path per call. Follows the “No-Inheritance” Flat principle ([CUE on inheritance](https://cuelang.org/docs/concept/configuration-use-case/#inheritance-based-configuration-languages), [Angular LIFT Flat](https://angular.io/guide/styleguide#flat)).
-- **No compile-time macros** — config stays outside the binary so the same build can run with different env files or process env (deploy, containers, CI). Values are never baked in at `cargo build`.
+- **No macros that bake env values into the binary** — `#[derive(Envro)]` encodes types and rules only; `.env` / process values are always read at runtime. Same build, different env files or containers.
 
 ## TODO
 
-- coerce env vars to types
 - encryption
 - performance
   - proper parsing

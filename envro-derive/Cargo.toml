@@ -1,6 +1,6 @@
 [package]
 name = "envro-derive"
-version = "0.9.0"
+version.workspace = true
 edition = "2021"
 description = "Derive macros for envro typed Config"
 license = "MIT"

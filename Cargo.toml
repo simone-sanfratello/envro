@@ -2,9 +2,12 @@
 members = [".", "envro-derive", "example"]
 resolver = "2"
 
+[workspace.package]
+version = "0.9.0"
+
 [package]
 name = "envro"
-version = "0.9.0"
+version.workspace = true
 edition = "2021"
 description = "A crate to load environment variables from a .env file into the process environment variables"
 license = "MIT"

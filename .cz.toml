@@ -5,3 +5,8 @@ version_scheme = "semver"
 version_provider = "cargo"
 update_changelog_on_bump = true
 major_version_zero = true
+# Cargo provider reads/writes [workspace.package].version; also bump the
+# published path-dep version so crates.io can resolve envro → envro-derive.
+version_files = [
+  "Cargo.toml:envro-derive = { path = \"envro-derive\", version",
+]

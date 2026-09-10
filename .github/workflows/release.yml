@@ -32,10 +32,13 @@ jobs:
       - name: Fetch tags
         run: git fetch --tags --force
 
-      # Commitizen incremental changelog (exit 16) requires a tag matching Cargo.toml version.
+      # Commitizen incremental changelog (exit 16) requires a tag matching the crate version.
       - name: Check version matches a git tag
         run: |
-          version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+          version="$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version = "\(.*\)"/\1/p;}' Cargo.toml | head -1)"
+          if [[ -z "$version" ]]; then
+            version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+          fi
           if ! git rev-parse -q --verify "refs/tags/${version}" >/dev/null; then
             echo "error: Cargo.toml version ${version} has no git tag '${version}'" >&2
             echo "latest tag: $(git describe --tags --abbrev=0 2>/dev/null || echo none)" >&2
@@ -93,7 +96,12 @@ jobs:
         if: steps.bump.outputs.skipped == 'false'
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish
+        run: |
+          # Derive must be on crates.io before the main crate can resolve it.
+          cargo publish -p envro-derive
+          # crates.io index needs a moment before dependents resolve the new version
+          sleep 30
+          cargo publish -p envro
 
       - name: Create GitHub Release
         if: steps.bump.outputs.skipped == 'false'
@@ -103,5 +111,6 @@ jobs:
           gh release create "${{ steps.bump.outputs.tag }}" \
             --title "${{ steps.bump.outputs.tag }}" \
             --generate-notes
+
 
 

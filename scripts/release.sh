@@ -33,9 +33,12 @@ ensure_cmd cz commitizen
 cz bump
 
 echo "==> push main and tags"
-git push origin main --follow-tags
+# cz creates lightweight tags; --follow-tags only pushes annotated tags
+git push origin main
+git push origin "refs/tags/$(git describe --tags --exact-match HEAD)"
 
 echo "==> publish crate"
 cargo publish
 
 echo "==> release done"
+

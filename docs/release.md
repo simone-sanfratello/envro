@@ -12,6 +12,8 @@ The job skips when the head commit message starts with `bump:`, or when Commitiz
 
 Prefer the GitHub Action for routine releases. Use `just release` only for a local dry-run / emergency publish — otherwise you risk double-publishing.
 
+Commitizen creates **lightweight** tags. The workflow pushes `refs/tags/<version>` explicitly (`git push --follow-tags` would skip them).
+
 ## Version must match the latest tag
 
 `update_changelog_on_bump` needs a git tag equal to the current `Cargo.toml` version. If they drift (for example version bumped in a PR without `cz bump`), release fails with:
@@ -125,5 +127,6 @@ SKIP_RELEASE_GITHUB_TOKEN=1 ./scripts/setup-github-secrets.sh   # crates.io only
 ```
 
 Requires `gh` authenticated (`gh auth login`).
+
 
 

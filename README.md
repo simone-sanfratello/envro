@@ -10,7 +10,7 @@ Env vars for Rust: parse `.env` files, load them into `std::env`, and validate v
 - **Parse** a `.env` file to a `HashMap` — no side effects on the process.
 - **Load** a `.env` file into the process environment with an explicit override policy.
 - **Validate** env vars against a `Schema` of composable rules. Validation is fully decoupled from loading: it works on any `HashMap`, on a `.env` file, or on the live process environment.
-- **Small `.env` dialect**: `#` comments, empty values, double-quoted strings (with multi-line support), `=` inside values, `$` kept literal, duplicate keys rejected.
+- **Small `.env` dialect**: `#` comments, empty values, double-quoted strings (with multi-line support), `=` inside values, `${VAR}` substitution (bare `$` literal; `\${VAR}` to skip), duplicate keys rejected.
 
 ## Getting started
 
@@ -562,20 +562,89 @@ Intentionally out of scope for the current rule set:
 
 ## `.env` format
 
-Small, explicit dialect. `$` is always kept literal (no `$VAR` substitution),
-duplicate keys are a hard error, and values may contain `=`.
+Small, explicit dialect. Values may contain `=`. Duplicate keys are a hard
+error. Only `${VAR}` is expanded (from other keys in the same file, then the
+process environment). Bare `$` is always literal. Use `\${VAR}` to keep the
+braced form without replacement. Unknown, empty, or invalid `${…}` becomes an
+empty string.
 
 Example file:
 
 ```env
 # comments are ignored
-DB_CONNECTION_STRING=pg://user:pass@db/mydb
+HOST=db.example.com
+DB_CONNECTION_STRING=pg://user:pass@${HOST}/mydb
 DB_POOL_SIZE=32
 EMPTY=
 QUOTED="value with spaces"
 ESCAPED="say \"hello\""
 WITH_EQUALS=host=localhost user=admin
+LITERAL=\${HOST}
+HASH=$2a$10$abc
 ```
+
+### Variable substitution
+
+| Form | Behavior |
+| --- | --- |
+| `${NAME}` | Replaced from other keys in the same file (any order), else from the process environment |
+| `${}` | Replaced with `""` |
+| `\${}` / `\${NAME}` | Literal `${}` / `${NAME}` (skip replacement) |
+| Unknown / invalid `${…}` | Replaced with `""` |
+| `$NAME` / `$2a$…` | Always literal — bare `$` is a normal character |
+
+`NAME` must match `[A-Za-z_][A-Za-z0-9_]*`. Expansion is order-independent:
+all keys are parsed first, then `${VAR}` refs are resolved across the file
+(and the process env) in as many passes as needed. Circular references
+resolve to empty strings. There is no `${NAME:-default}` syntax.
+
+### Compose values, validate the parts
+
+Store each knob as its own env var, compose derived values with `${VAR}`, and
+validate every part with a `Schema`. That keeps rules close to the data
+(length, port, allow-list, …) instead of parsing a blob at runtime.
+Definition order does not matter.
+
+**Example — Postgres URI from validated parts**
+
+`.env`:
+
+```env
+PG_USER=app
+PG_PASS=secret
+PG_HOST=db.example.com
+PG_PORT=5432
+PG_DB=mydb
+PG_SSLMODE=require
+
+DATABASE_URI=pg://${PG_USER}:${PG_PASS}@${PG_HOST}:${PG_PORT}/${PG_DB}?sslmode=${PG_SSLMODE}
+```
+
+After load, `DATABASE_URI` is
+`pg://app:secret@db.example.com:5432/mydb?sslmode=require`.
+
+```rust
+use envro::*;
+
+let schema = Schema::new()
+    .field("PG_USER", Field::required().min_len(1).max_len(63).alphanumeric())
+    .field("PG_PASS", Field::required().min_len(6))
+    .field("PG_HOST", Field::required().min_len(1).max_len(253))
+    .field("PG_PORT", Field::required().port())
+    .field("PG_DB",   Field::required().min_len(1).alphanumeric())
+    .field("PG_SSLMODE", Field::required().one_of(&["disable", "require", "verify-full"]))
+    .field(
+        "DATABASE_URI",
+        Field::required().min_len(1).starts_with("pg://"),
+    );
+
+let env_file = std::env::current_dir().unwrap().join(".env");
+let vars = load_dotenv_validated(&env_file, &schema)?;
+
+let uri = vars.get("DATABASE_URI").unwrap();
+```
+
+See `example/` for a runnable version of this pattern.
 
 ### Valid rows
 
@@ -589,7 +658,15 @@ WITH_EQUALS=host=localhost user=admin
 | `QUOTED="a b"`         | `QUOTED` = `a b`               | Double-quoted value |
 | `ESCAPED="say \"hi\""` | `ESCAPED` = `say "hi"`         | `\"` escapes an inner quote |
 | `DSN=host=db user=admin` | `DSN` = `host=db user=admin` | `=` allowed inside value |
-| `HASH=$2a$10$abc`      | `HASH` = `$2a$10$abc`          | `$` kept literal (no `$VAR`) |
+| `HOST=h` / `URL=${HOST}` (any order) | `URL` = `h` | Order-independent `${VAR}` |
+| `A=abc${B}` / `B=123` | `A` = `abc123` | Forward refs resolve |
+| `BARE=$HOST`           | `BARE` = `$HOST`               | Bare `$` never expanded |
+| `LIT=\${HOST}`         | `LIT` = `${HOST}`              | `\${…}` skips replacement |
+| `X=${}`                | `X` = `""`                     | Empty braces → empty |
+| `X=\${}`               | `X` = `${}`                    | `\${}` skips replacement |
+| `X=${MISSING}`         | `X` = `""`                     | Unknown `${VAR}` → empty |
+| `X=${1}`               | `X` = `""`                     | Invalid name → empty |
+| `HASH=$2a$10$abc`      | `HASH` = `$2a$10$abc`          | `$` allowed as a normal char |
 | `URL="pg://u:p@h/db"`  | `URL` = `pg://u:p@h/db`        | Any chars fine inside quotes |
 | `KEY="line1`<br/>`line2"` | `KEY` = `line1\nline2`      | Multi-line quoted value — newlines preserved |
 
@@ -634,9 +711,9 @@ Features not implemented by design:
 ## TODO
 
 - coerce env vars to types
-- support $VAR replacing
 - encryption
 - performance
+  - proper parsing
 
 ---
 

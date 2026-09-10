@@ -14,9 +14,14 @@ test:
 test-coverage:
     cargo tarpaulin --tests --fail-under 100
 
-# run clippy
+# format sources and auto-fix clippy lints
 format:
     cargo fmt
+    cargo clippy --all-targets --all-features --fix --allow-dirty --allow-staged -- -D warnings
+
+# run clippy (check only)
+lint:
+    cargo clippy --all-targets --all-features -- -D warnings
 
 # build the program
 build:
@@ -37,3 +42,4 @@ fix:
 # release: sync main, verify, bump (commitizen), push tags, publish
 release:
     ./scripts/release.sh
+

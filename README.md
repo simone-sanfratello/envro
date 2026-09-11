@@ -54,7 +54,6 @@ fn main() -> Result<(), EnvroError> {
         load_dotenv_in_env_vars(&env_file, false)?;
     }
 
-    // validate env vars
     let config = Config::from_env()?;
     println!("{config:?}");
     Ok(())

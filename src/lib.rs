@@ -84,7 +84,7 @@ fn is_var_name_continue(c: u8) -> bool {
 }
 
 /// Collect `${NAME}` refs in `s`, ignoring `\${`.
-fn var_refs_in(s: &str) -> Vec<String> {
+fn var_refs_in(s: &str) -> Vec<&str> {
     let bytes = s.as_bytes();
     let mut refs = Vec::new();
     let mut i = 0;
@@ -109,7 +109,7 @@ fn var_refs_in(s: &str) -> Vec<String> {
                         .copied()
                         .all(is_var_name_continue)
                 {
-                    refs.push(name.to_string());
+                    refs.push(name);
                 }
                 i = j + 1;
                 continue;
@@ -118,6 +118,14 @@ fn var_refs_in(s: &str) -> Vec<String> {
         i += 1;
     }
     refs
+}
+
+fn expand_value(raw_val: &str, known: &EnvroVars) -> String {
+    if !raw_val.as_bytes().contains(&b'$') {
+        raw_val.to_owned()
+    } else {
+        substitute_vars(raw_val, known)
+    }
 }
 
 /// Expand `${VAR}` using `known` file vars, then process env.
@@ -169,8 +177,13 @@ fn substitute_vars(input: &str, known: &EnvroVars) -> String {
             continue;
         }
 
-        out.push(bytes[i] as char);
+        // Bulk-copy UTF-8 until the next `$` or `\`.
+        let start = i;
         i += 1;
+        while i < bytes.len() && bytes[i] != b'$' && bytes[i] != b'\\' {
+            i += 1;
+        }
+        out.push_str(&input[start..i]);
     }
     out
 }
@@ -181,35 +194,51 @@ fn substitute_vars(input: &str, known: &EnvroVars) -> String {
 /// Cycles (and anything left after that) expand with missing in-file refs as `""`.
 fn resolve_vars(raw: &EnvroVars) -> EnvroVars {
     let mut resolved = EnvroVars::with_capacity(raw.len());
-    let mut pending: Vec<String> = raw.keys().cloned().collect();
+    let mut indegree: HashMap<&str, usize> = HashMap::with_capacity(raw.len());
+    let mut dependents: HashMap<&str, Vec<&str>> = HashMap::new();
 
-    while !pending.is_empty() {
-        let mut progress = false;
-        let mut still = Vec::new();
-        for key in pending {
-            let raw_val = raw.get(&key).unwrap();
-            let ready = var_refs_in(raw_val).iter().all(|r| {
-                // Env-only refs are always ready; in-file refs must be resolved.
-                !raw.contains_key(r) || resolved.contains_key(r)
-            });
-            if ready {
-                resolved.insert(key, substitute_vars(raw_val, &resolved));
-                progress = true;
-            } else {
-                still.push(key);
+    for (key, raw_val) in raw {
+        let mut file_deps: Vec<&str> = var_refs_in(raw_val)
+            .into_iter()
+            .filter(|r| raw.contains_key(*r))
+            .collect();
+        file_deps.sort_unstable();
+        file_deps.dedup();
+        indegree.insert(key.as_str(), file_deps.len());
+        for dep in file_deps {
+            dependents.entry(dep).or_default().push(key.as_str());
+        }
+    }
+
+    let mut queue: Vec<&str> = indegree
+        .iter()
+        .filter(|(_, deg)| **deg == 0)
+        .map(|(k, _)| *k)
+        .collect();
+
+    while let Some(key) = queue.pop() {
+        let raw_val = raw.get(key).expect("key from raw");
+        resolved.insert(key.to_string(), expand_value(raw_val, &resolved));
+        if let Some(deps) = dependents.get(key) {
+            for &dep in deps {
+                let deg = indegree.get_mut(dep).expect("indegree for dependent");
+                *deg -= 1;
+                if *deg == 0 {
+                    queue.push(dep);
+                }
             }
         }
-        if !progress {
-            // Cycles: expand against a snapshot that omits still-pending keys
-            // so refs into the cycle become empty.
-            let frozen = resolved.clone();
-            for key in still {
-                let raw_val = raw.get(&key).unwrap();
-                resolved.insert(key, substitute_vars(raw_val, &frozen));
+    }
+
+    if resolved.len() < raw.len() {
+        // Cycles: expand against a snapshot that omits still-pending keys
+        // so refs into the cycle become empty.
+        let frozen = resolved.clone();
+        for (key, raw_val) in raw {
+            if !resolved.contains_key(key) {
+                resolved.insert(key.clone(), expand_value(raw_val, &frozen));
             }
-            break;
         }
-        pending = still;
     }
 
     resolved
@@ -237,10 +266,9 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
         }
     };
 
-    let mut vars = EnvroVars::new();
-
     // Split on '\n' so we can advance the index across multi-line quoted values.
     let raw_lines: Vec<&str> = file_content.split('\n').collect();
+    let mut vars = EnvroVars::with_capacity(raw_lines.len());
     let mut i = 0;
     while i < raw_lines.len() {
         // Strip a trailing '\r' so CRLF files parse identically to LF.
@@ -255,10 +283,8 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
                 reason: "missing value".to_string(),
             })?;
 
-            let var = String::from(&line[..eq_idx]);
-            let mut value = String::from(&line[eq_idx + 1..]);
-
-            if var.is_empty() {
+            let key = line[..eq_idx].trim_end();
+            if key.is_empty() {
                 return Err(EnvroError::Parse {
                     line: String::from(line),
                     reason: "missing variable name".to_string(),
@@ -266,15 +292,16 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
             }
 
             // env::set_var panics on NUL in the key.
-            if var.contains('\0') {
+            if key.contains('\0') {
                 return Err(EnvroError::Parse {
                     line: String::from(line),
                     reason: "variable name contains NUL byte".to_string(),
                 });
             }
 
-            // Preserve the first line for error messages before we advance.
-            let first_line = String::from(line);
+            let after_eq = line[eq_idx + 1..].trim_start();
+            let mut value = String::from(after_eq);
+            let var = String::from(key);
 
             // Quoted values may span multiple lines. If the first line opens a
             // quote but does not close it, we accumulate subsequent lines with
@@ -283,7 +310,12 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
             if value.starts_with('"') {
                 let single_line_closed = value.len() >= 2 && line_closes_quote(&value);
                 if single_line_closed {
-                    value = value[1..value.len() - 1].replace("\\\"", "\"");
+                    let inner = &value[1..value.len() - 1];
+                    value = if inner.contains("\\\"") {
+                        inner.replace("\\\"", "\"")
+                    } else {
+                        inner.to_owned()
+                    };
                 } else {
                     let mut buf = String::from(&value[1..]);
                     let mut closed = false;
@@ -301,17 +333,21 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
                     }
                     if !closed {
                         return Err(EnvroError::Parse {
-                            line: first_line,
+                            line: String::from(line),
                             reason: "missing closing quote".to_string(),
                         });
                     }
-                    value = buf.replace("\\\"", "\"");
+                    value = if buf.contains("\\\"") {
+                        buf.replace("\\\"", "\"")
+                    } else {
+                        buf
+                    };
                 }
             }
 
             if value.contains('\0') {
                 return Err(EnvroError::Parse {
-                    line: first_line,
+                    line: String::from(line),
                     reason: "value contains NUL byte".to_string(),
                 });
             }
@@ -319,7 +355,7 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
             // Reject duplicate variable names in the same file.
             if vars.contains_key(&var) {
                 return Err(EnvroError::Parse {
-                    line: first_line,
+                    line: String::from(line),
                     reason: format!("duplicate variable name: {}", var),
                 });
             }

@@ -516,36 +516,36 @@ fn check_rule(key: &str, value: &str, rule: &Rule, out: &mut Vec<ValidationIssue
             }
         }
         Rule::Integer => {
-            if value.parse::<i64>().is_err() {
+            if crate::coerce::parse_i64(value).is_err() {
                 out.push(issue("integer", "not an integer".to_string()));
             }
         }
-        Rule::PositiveInteger => match value.parse::<i64>() {
+        Rule::PositiveInteger => match crate::coerce::parse_i64(value) {
             Ok(n) if n > 0 => {}
             Ok(_) => out.push(issue("positive_integer", "must be > 0".to_string())),
             Err(_) => out.push(issue("positive_integer", "not an integer".to_string())),
         },
-        Rule::NonNegativeInteger => match value.parse::<i64>() {
+        Rule::NonNegativeInteger => match crate::coerce::parse_i64(value) {
             Ok(n) if n >= 0 => {}
             Ok(_) => out.push(issue("non_negative_integer", "must be >= 0".to_string())),
             Err(_) => out.push(issue("non_negative_integer", "not an integer".to_string())),
         },
         Rule::Float => {
-            if value.parse::<f64>().is_err() {
+            if crate::coerce::parse_f64(value).is_err() {
                 out.push(issue("float", "not a float".to_string()));
             }
         }
-        Rule::PositiveFloat => match value.parse::<f64>() {
+        Rule::PositiveFloat => match crate::coerce::parse_f64(value) {
             Ok(n) if n > 0.0 => {}
             Ok(_) => out.push(issue("positive_float", "must be > 0".to_string())),
             Err(_) => out.push(issue("positive_float", "not a float".to_string())),
         },
-        Rule::NonNegativeFloat => match value.parse::<f64>() {
+        Rule::NonNegativeFloat => match crate::coerce::parse_f64(value) {
             Ok(n) if n >= 0.0 => {}
             Ok(_) => out.push(issue("non_negative_float", "must be >= 0".to_string())),
             Err(_) => out.push(issue("non_negative_float", "not a float".to_string())),
         },
-        Rule::IntRange(min, max) => match value.parse::<i64>() {
+        Rule::IntRange(min, max) => match crate::coerce::parse_i64(value) {
             Ok(n) if n >= *min && n <= *max => {}
             Ok(n) => out.push(issue(
                 "int_range",
@@ -553,7 +553,7 @@ fn check_rule(key: &str, value: &str, rule: &Rule, out: &mut Vec<ValidationIssue
             )),
             Err(_) => out.push(issue("int_range", "not an integer".to_string())),
         },
-        Rule::FloatRange(min, max) => match value.parse::<f64>() {
+        Rule::FloatRange(min, max) => match crate::coerce::parse_f64(value) {
             Ok(n) if n >= *min && n <= *max => {}
             Ok(n) => out.push(issue(
                 "float_range",

@@ -5,7 +5,7 @@
 1. `cargo fmt --check` and `cargo test`
 2. `cz bump` (version commit + tag + changelog)
 3. Push commit and tags to `main`
-4. `cargo publish` to crates.io
+4. `cargo publish -p envro-derive` then `cargo publish -p envro` to crates.io
 5. Create a GitHub Release
 
 The job skips when the head commit message starts with `bump:`, or when Commitizen reports nothing to bump (exit code `21`).
@@ -60,9 +60,23 @@ https://github.com/simone-sanfratello/envro/settings/secrets/actions
 
 ### `CARGO_REGISTRY_TOKEN`
 
+Envro publishes **two** crates: `envro-derive` first, then `envro`. The API token must allow both.
+
 1. Create a token at https://crates.io/settings/tokens
-2. Scope: **publish-update** for crate `envro`
-3. Store it as the repo secret `CARGO_REGISTRY_TOKEN`
+2. Scopes (crates.io UI varies slightly):
+   - **First release of `envro-derive`:** allow **publish-new** (or equivalent “create new crates”), **or** publish `envro-derive` once locally with an account token, then switch CI to update-only.
+   - **Ongoing:** **publish-update** for crates `envro` **and** `envro-derive`.
+3. Store it as the repo secret `CARGO_REGISTRY_TOKEN`  
+   https://github.com/simone-sanfratello/envro/settings/secrets/actions
+
+A token scoped only to `envro` yields:
+
+```text
+failed to publish envro-derive … 403 Forbidden:
+this token does not have the required permissions to perform this action
+```
+
+**Fix:** regenerate the token with both crates (and publish-new if `envro-derive` is not on crates.io yet), update the secret, then re-run **Actions → Release → Run workflow** (or publish the missing versions manually once).
 
 ### `RELEASE_GITHUB_TOKEN` (fine-grained PAT)
 
@@ -127,6 +141,7 @@ SKIP_RELEASE_GITHUB_TOKEN=1 ./scripts/setup-github-secrets.sh   # crates.io only
 ```
 
 Requires `gh` authenticated (`gh auth login`).
+
 
 
 

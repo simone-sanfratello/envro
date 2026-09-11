@@ -28,44 +28,60 @@ fn issue(key: &str, rule: &'static str, reason: impl Into<String>) -> EnvroError
 
 /// Same accept list as [`crate::Field::boolean`].
 pub fn parse_bool(value: &str) -> Result<bool, &'static str> {
-    match value.to_ascii_lowercase().as_str() {
-        "true" | "1" | "yes" => Ok(true),
-        "false" | "0" | "no" => Ok(false),
-        _ => Err("not a boolean"),
+    let value = value.trim();
+    if value.eq_ignore_ascii_case("true") || value == "1" || value.eq_ignore_ascii_case("yes") {
+        Ok(true)
+    } else if value.eq_ignore_ascii_case("false")
+        || value == "0"
+        || value.eq_ignore_ascii_case("no")
+    {
+        Ok(false)
+    } else {
+        Err("not a boolean")
     }
 }
 
 pub fn parse_i32(value: &str) -> Result<i32, &'static str> {
-    value.parse().map_err(|_| "not an i32")
+    value.trim().parse().map_err(|_| "not an i32")
 }
 
 pub fn parse_i64(value: &str) -> Result<i64, &'static str> {
-    value.parse().map_err(|_| "not an integer")
+    value.trim().parse().map_err(|_| "not an integer")
 }
 
 pub fn parse_u16(value: &str) -> Result<u16, &'static str> {
-    value.parse().map_err(|_| "not a u16")
+    value.trim().parse().map_err(|_| "not a u16")
 }
 
 pub fn parse_u32(value: &str) -> Result<u32, &'static str> {
-    value.parse().map_err(|_| "not a u32")
+    value.trim().parse().map_err(|_| "not a u32")
 }
 
 pub fn parse_u64(value: &str) -> Result<u64, &'static str> {
-    value.parse().map_err(|_| "not a u64")
+    value.trim().parse().map_err(|_| "not a u64")
 }
 
 pub fn parse_f32(value: &str) -> Result<f32, &'static str> {
-    value.parse().map_err(|_| "not a float")
+    let n: f32 = value.trim().parse().map_err(|_| "not a float")?;
+    if n.is_finite() {
+        Ok(n)
+    } else {
+        Err("not a finite float")
+    }
 }
 
 pub fn parse_f64(value: &str) -> Result<f64, &'static str> {
-    value.parse().map_err(|_| "not a float")
+    let n: f64 = value.trim().parse().map_err(|_| "not a float")?;
+    if n.is_finite() {
+        Ok(n)
+    } else {
+        Err("not a finite float")
+    }
 }
 
 /// Port range check used by [`crate::Field::port`].
 pub fn parse_port_u16(value: &str) -> Result<u16, String> {
-    match value.parse::<u32>() {
+    match value.trim().parse::<u32>() {
         Ok(n) if (1..=65535).contains(&n) => Ok(n as u16),
         Ok(n) => Err(format!("{n} not in 1..=65535")),
         Err(_) => Err("not a number".to_string()),

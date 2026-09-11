@@ -3,13 +3,13 @@
 [![Crates.io](https://img.shields.io/crates/v/envro.svg)](https://crates.io/crates/envro)
 [![docs.rs](https://img.shields.io/docsrs/envro)](https://docs.rs/envro)
 
-Env vars for Rust: parse `.env` files, load them into `std::env`, validate with a composable rule set, and optionally derive a typed `Config`.
+Env vars for Rust: validate with a composable rule set, load `.env` into `std::env`, parse to a map, and optionally derive a typed `Config`.
 
 ## Features
 
-- **Parse** a `.env` file to a `HashMap` — no side effects on the process.
+- **Validate** env vars against a `Schema` of composable rules. Fully decoupled from loading: works on any `HashMap`, a `.env` file, or the live process environment.
 - **Load** a `.env` file into the process environment with an explicit override policy.
-- **Validate** env vars against a `Schema` of composable rules. Validation is fully decoupled from loading: it works on any `HashMap`, on a `.env` file, or on the live process environment.
+- **Parse** a `.env` file to a `HashMap` — no side effects on the process environment.
 - **Derive** a typed `Config` with `#[derive(Envro)]` — field types are the coerce targets; `#[envro(...)]` attrs are the rules. Values still load at runtime.
 - **Small `.env` dialect** to support comments, multiline values, quotes and so on.
 
@@ -47,11 +47,12 @@ struct Config {
 fn main() -> Result<(), EnvroError> {
     let env_file = env::current_dir()?.join(".env");
 
-    // load .env into process env when the file exists (keep existing non-empty values)
+    // load .env into process env when the file exists
     if env_file.is_file() {
         load_dotenv_in_env_vars(&env_file, false)?;
     }
 
+    // validate env vars
     let config = Config::from_env()?;
     println!("{config:?}");
     Ok(())
@@ -59,14 +60,6 @@ fn main() -> Result<(), EnvroError> {
 ```
 
 ## Loading `.env` files
-
-### Types
-
-- `EnvroVars` — alias for `HashMap<String, String>`
-- `EnvroError` — errors from envro
-  - `EnvroError::File` — cannot read the file
-  - `EnvroError::Parse` — invalid line (missing `=`, empty name, unclosed quote, duplicate key, …)
-  - `EnvroError::Validation` — validation issues (see [Validation](#validation))
 
 ### `load_dotenv(path) -> Result<EnvroVars, EnvroError>`
 
@@ -119,6 +112,17 @@ load_dotenv_in_env_vars(&env_file, true)?;
 
 // file value wins
 assert_eq!(env::var("DB_POOL_SIZE").unwrap(), "32");
+```
+
+### `load_dotenv_validated(path, &schema) -> Result<EnvroVars, EnvroError>`
+
+Parses the file, then validates against a `Schema`. Equivalent to `load_dotenv` followed by `validate`. See [Validation](#validation).
+
+```rust
+use envro::*;
+
+let env_file = std::env::current_dir().unwrap().join(".env");
+let vars = load_dotenv_validated(&env_file, &schema)?;
 ```
 
 ## Validation
@@ -416,7 +420,7 @@ one that fails.
   RETRIES=-1    # fail: non_negative_integer
   ```
 
-- `float()` — parses as `f64`
+- `float()` — parses as finite `f64` (`nan` / `inf` rejected)
   ```rust
   Field::required().float()
   ```
@@ -599,14 +603,6 @@ Example message:
 VALIDATION_ERROR PORT[port]: 70000 not in 1..=65535; ADMIN_EMAIL[email]: contains whitespace
 ```
 
-### Not in v1
-
-Intentionally out of scope for the current rule set:
-
-- regex / arbitrary predicates
-- filesystem path existence
-- JSON schema, nested maps
-
 ## `.env` format
 
 Small, explicit dialect. Values may contain `=`. Duplicate keys are a hard
@@ -700,6 +696,7 @@ See `example/` for a runnable version of this pattern.
 | `# any text`           | *(skipped)*                    | Full-line comment |
 | *(empty line)*         | *(skipped)*                    | Blank lines are ignored |
 | `NAME=envro`           | `NAME` = `envro`               | Basic `KEY=value` |
+| `KEY = value`          | `KEY` = `value`                | Spaces around `=` trimmed |
 | `EMPTY=`               | `EMPTY` = `""`                 | Empty value, no quotes |
 | `EMPTY=""`             | `EMPTY` = `""`                 | Empty quoted value |
 | `QUOTED="a b"`         | `QUOTED` = `a b`               | Double-quoted value |
@@ -808,9 +805,8 @@ Features not implemented by design:
 
 ## TODO
 
+- optional, default values
 - encryption
-- performance
-  - proper parsing
 
 ---
 

@@ -26,7 +26,7 @@ if ! require_cmd cargo-tarpaulin; then
   echo "error: cargo-tarpaulin not found; run: just setup" >&2
   exit 1
 fi
-cargo tarpaulin --tests --fail-under 100
+cargo tarpaulin --tests --fail-under 100 --exclude-files 'target/*'
 
 echo "==> bump version (commitizen)"
 ensure_cmd cz commitizen
@@ -43,6 +43,7 @@ sleep 30
 publish_crate envro
 
 echo "==> release done"
+
 
 
 

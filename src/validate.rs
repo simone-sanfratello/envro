@@ -26,7 +26,7 @@
 //! let schema = Schema::new()
 //!     .field("APP_NAME", Field::required().min_len(3).max_len(64))
 //!     .field("PORT", Field::required().port())
-//!     .field("ADMIN_EMAIL", Field::optional().email())
+//!     .field("ADMIN_EMAIL", Field::default_value("admin@example.com").email())
 //!     .field("LOG_LEVEL", Field::required().one_of(&["debug", "info", "warn", "error"]));
 //!
 //! validate(&vars, &schema).unwrap();
@@ -64,10 +64,10 @@ pub(crate) fn format_issues(issues: &[ValidationIssue]) -> String {
         .join("; ")
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 enum Presence {
     Required,
-    Optional,
+    Optional { default: String },
 }
 
 #[derive(Debug)]
@@ -117,7 +117,7 @@ enum Rule {
 
 /// A composable field spec.
 ///
-/// Start with [`Field::required`] or [`Field::optional`], then chain rules.
+/// Start with [`Field::required`] or [`Field::default_value`], then chain rules.
 /// See the module docs for an example.
 #[derive(Debug)]
 pub struct Field {
@@ -134,11 +134,22 @@ impl Field {
         }
     }
 
-    /// Field may be missing or empty; other rules are skipped when so.
-    pub fn optional() -> Self {
+    /// Field may be missing or empty; `default_value` is used (and validated) when so.
+    ///
+    /// Named `default_value` (not `default`) to avoid clashing with [`Default`].
+    pub fn default_value(default_value: impl Into<String>) -> Self {
         Self {
-            presence: Presence::Optional,
+            presence: Presence::Optional {
+                default: default_value.into(),
+            },
             rules: Vec::new(),
+        }
+    }
+
+    fn optional_default(&self) -> Option<&str> {
+        match &self.presence {
+            Presence::Optional { default } => Some(default.as_str()),
+            Presence::Required => None,
         }
     }
 
@@ -313,8 +324,8 @@ impl Field {
     /// Split the value on `delim` (trimming each part) and apply `item`'s rules to
     /// each element. Element failures are reported with key `KEY[i]`.
     ///
-    /// When `item` is [`Field::optional`], empty parts skip the item rules; when
-    /// [`Field::required`], empty parts fail the `required` rule.
+    /// When `item` is [`Field::default_value`], empty parts use the item default (then
+    /// its rules); when [`Field::required`], empty parts fail `required`.
     pub fn list(mut self, delim: char, item: Field) -> Self {
         self.rules.push(Rule::List {
             delim,
@@ -361,6 +372,20 @@ impl Schema {
         self.fields.push((name.into(), field));
         self
     }
+
+    /// Copy `vars`, filling missing/empty optional keys with their defaults.
+    pub fn apply_defaults(&self, vars: &crate::EnvroVars) -> crate::EnvroVars {
+        let mut out = vars.clone();
+        for (key, field) in &self.fields {
+            let missing = !out.get(key).is_some_and(|v| !v.is_empty());
+            if missing {
+                if let Some(default) = field.optional_default() {
+                    out.insert(key.clone(), default.to_string());
+                }
+            }
+        }
+        out
+    }
 }
 
 /// Validate an arbitrary `EnvroVars` map against a schema.
@@ -387,7 +412,7 @@ pub fn validate(vars: &EnvroVars, schema: &Schema) -> Result<(), EnvroError> {
 
 /// Load a `.env` file and validate it in one step.
 pub fn load_dotenv_validated(path: &Path, schema: &Schema) -> Result<EnvroVars, EnvroError> {
-    let vars = load_dotenv(path)?;
+    let vars = schema.apply_defaults(&load_dotenv(path)?);
     validate(&vars, schema)?;
     Ok(vars)
 }
@@ -416,17 +441,21 @@ pub fn validate_env(schema: &Schema) -> Result<(), EnvroError> {
 
 fn validate_field(key: &str, field: &Field, value: Option<&str>, out: &mut Vec<ValidationIssue>) {
     let present = matches!(value, Some(v) if !v.is_empty());
-    if !present {
-        if matches!(field.presence, Presence::Required) {
-            out.push(ValidationIssue {
-                key: key.to_string(),
-                rule: "required",
-                reason: "value is missing or empty".to_string(),
-            });
+    let value = if present {
+        value.unwrap()
+    } else {
+        match &field.presence {
+            Presence::Required => {
+                out.push(ValidationIssue {
+                    key: key.to_string(),
+                    rule: "required",
+                    reason: "value is missing or empty".to_string(),
+                });
+                return;
+            }
+            Presence::Optional { default } => default.as_str(),
         }
-        return;
-    }
-    let value = value.unwrap();
+    };
     for rule in &field.rules {
         check_rule(key, value, rule, out);
     }
@@ -730,12 +759,24 @@ mod tests {
     }
 
     #[test]
-    fn optional_missing_or_empty_skips_rules() {
+    fn optional_missing_or_empty_uses_default() {
         let schema = Schema::new()
-            .field("A", Field::optional().min_len(3))
-            .field("B", Field::optional().min_len(3));
+            .field("A", Field::default_value("abc").min_len(3))
+            .field("B", Field::default_value("xyz").min_len(3));
         let v = vars(&[("B", "")]);
         assert!(validate(&v, &schema).is_ok());
+
+        // default itself must satisfy rules
+        let bad = Schema::new().field("A", Field::default_value("ab").min_len(3));
+        let iss = issues(validate(&EnvroVars::new(), &bad));
+        assert_eq!(iss.len(), 1);
+        assert_eq!(iss[0].rule, "min_len");
+
+        let filled = schema.apply_defaults(&EnvroVars::new());
+        assert_eq!(filled.get("A").map(String::as_str), Some("abc"));
+        assert_eq!(filled.get("B").map(String::as_str), Some("xyz"));
+        assert!(Field::required().optional_default().is_none());
+        assert_eq!(Field::default_value("x").optional_default(), Some("x"));
     }
 
     #[test]
@@ -922,16 +963,17 @@ mod tests {
     }
 
     #[test]
-    fn list_optional_items_skip_empty() {
+    fn list_optional_items_use_default_for_empty() {
         let schema = Schema::new().field(
             "T",
-            Field::required().list(',', Field::optional().min_len(2)),
+            Field::required().list(',', Field::default_value("xx").min_len(2)),
         );
-        // "a," -> ["a", ""] ; "a" fails min_len, "" is optional/skipped
+        // "a," -> ["a", ""] ; "a" fails min_len, "" uses default "xx" (ok)
         let iss = issues(validate(&vars(&[("T", "a,")]), &schema));
         assert_eq!(iss.len(), 1);
         assert_eq!(iss[0].key, "T[0]");
         assert_eq!(iss[0].rule, "min_len");
+        assert!(validate(&vars(&[("T", "aa,")]), &schema).is_ok());
     }
 
     #[test]
@@ -1090,7 +1132,7 @@ mod tests {
 
     #[test]
     fn hex_empty_after_prefix_and_uppercase_prefix() {
-        let schema = Schema::new().field("H", Field::optional().hex());
+        let schema = Schema::new().field("H", Field::default_value("0xFF").hex());
         // "0x" strips to "" -> empty branch
         let iss = issues(validate(&vars(&[("H", "0x")]), &schema));
         assert_eq!(iss.len(), 1);
@@ -1111,7 +1153,7 @@ mod tests {
 
             let schema = Schema::new()
                 .field("VE_A", Field::required().min_len(3))
-                .field("VE_B", Field::optional().integer())
+                .field("VE_B", Field::default_value("0").integer())
                 .field("VE_C", Field::required().port());
 
             // all missing: only required fields fail.

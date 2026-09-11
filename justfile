@@ -6,13 +6,13 @@ setup:
 maintenance:
     ./scripts/maintenance.sh
 
-# run the tests
+# run the tests (same as pre-commit)
 test:
-    cargo test --tests -- --nocapture
+    cargo test -- --test-threads=1
 
 # run the tests with coverage
 test-coverage:
-    cargo tarpaulin --tests --fail-under 100
+    cargo tarpaulin --tests --fail-under 100 --exclude-files 'target/*'
 
 # format sources and auto-fix clippy lints
 format:
@@ -42,4 +42,6 @@ fix:
 # release: sync main, verify, bump (commitizen), push tags, publish
 release:
     ./scripts/release.sh
+
+
 

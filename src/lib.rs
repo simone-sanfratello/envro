@@ -174,25 +174,29 @@ fn substitute_vars(input: &str, known: &EnvroVars) -> String {
             // Invalid / empty `${}` → empty (same as unknown).
             // Use `\${` to keep a literal `${`.
             i = j + 1;
-            continue;
-        }
-
-        // Bulk-copy UTF-8 until the next `$` or `\`.
-        let start = i;
-        i += 1;
-        while i < bytes.len() && bytes[i] != b'$' && bytes[i] != b'\\' {
+        } else {
+            // Bulk-copy UTF-8 until the next `$` or `\`.
+            let start = i;
             i += 1;
+            while i < bytes.len() && bytes[i] != b'$' && bytes[i] != b'\\' {
+                i += 1;
+            }
+            out.push_str(&input[start..i]);
         }
-        out.push_str(&input[start..i]);
     }
     out
 }
 
-/// Resolve `${VAR}` refs so definition order does not matter.
+/// Expand `${VAR}` refs across a map, order-independent.
 ///
-/// Keys are expanded only once all of their in-file dependencies are resolved.
-/// Cycles (and anything left after that) expand with missing in-file refs as `""`.
-fn resolve_vars(raw: &EnvroVars) -> EnvroVars {
+/// Each value is substituted only once all of its in-map dependencies are
+/// resolved (topological order). Refs that don't name a key in `raw` fall
+/// back to the process environment; anything still missing — including
+/// cycles — expands to `""`.
+///
+/// Used by [`load_dotenv`] after parsing, and by derive-generated
+/// `from_env` implementations before validation.
+pub fn expand_vars(raw: &EnvroVars) -> EnvroVars {
     let mut resolved = EnvroVars::with_capacity(raw.len());
     let mut indegree: HashMap<&str, usize> = HashMap::with_capacity(raw.len());
     let mut dependents: HashMap<&str, Vec<&str>> = HashMap::new();
@@ -367,7 +371,7 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
         }
     }
 
-    Ok(resolve_vars(&vars))
+    Ok(expand_vars(&vars))
 }
 
 /// Load vars from an env file into process environment variables.
@@ -551,15 +555,19 @@ mod tests {
     fn should_handle_quoted_values() {
         let file_name = env::temp_dir().join(".env-quoted");
         let mut file = File::create(&file_name).unwrap();
-        file.write_all(b"\nVAR1=\"1\"\nVAR2=\"Lorem ipsum \"ciao!\" \"")
-            .unwrap();
+        file.write_all(
+            b"\nVAR1=\"1\"\nVAR2=\"Lorem ipsum \"ciao!\" \"\nVAR3=\"say \\\"hello\\\"\"",
+        )
+        .unwrap();
         env::remove_var("VAR1");
         env::remove_var("VAR2");
+        env::remove_var("VAR3");
 
         load_dotenv_in_env_vars(file_name.as_path(), false).unwrap();
 
         assert_eq!(env::var("VAR1"), Ok("1".to_string()));
         assert_eq!(env::var("VAR2"), Ok("Lorem ipsum \"ciao!\" ".to_string()));
+        assert_eq!(env::var("VAR3"), Ok("say \"hello\"".to_string()));
     }
 
     #[test]

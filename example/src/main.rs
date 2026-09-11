@@ -1,4 +1,5 @@
-//! Validate PG_* knobs from process env (CD-friendly), compose the DSN in Rust.
+//! Validate PG_* knobs from process env (CD-friendly) and expand
+//! `DATABASE_URI=pg://${PG_USER}:…` via `Config::from_env()`.
 //!
 //! Run from the `example/` directory:
 //!
@@ -31,17 +32,11 @@ struct Config {
     #[envro(from = "PG_SSLMODE", one_of("disable", "require", "verify-full"))]
     pg_sslmode: String,
 
+    #[envro(from = "DATABASE_URI", starts_with = "pg://")]
+    database_uri: String,
+
     #[envro(from = "DB_POOL_SIZE", positive_integer)]
     db_pool_size: i64,
-}
-
-impl Config {
-    fn database_uri(&self) -> String {
-        format!(
-            "pg://{}:{}@{}:{}/{}?sslmode={}",
-            self.pg_user, self.pg_pass, self.pg_host, self.pg_port, self.pg_db, self.pg_sslmode
-        )
-    }
 }
 
 fn main() {
@@ -67,6 +62,6 @@ fn main() {
     println!("  PG_DB={}", config.pg_db);
     println!("  PG_SSLMODE={}", config.pg_sslmode);
     println!();
-    println!("DATABASE_URI={}", config.database_uri());
+    println!("DATABASE_URI={}", config.database_uri);
     println!("DB_POOL_SIZE={}", config.db_pool_size);
 }

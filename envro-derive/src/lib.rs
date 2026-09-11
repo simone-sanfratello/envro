@@ -18,6 +18,7 @@ struct FieldInfo {
     name: syn::Ident,
     env_key: String,
     optional: bool,
+    default: Option<String>,
     ty_kind: TyKind,
     rules: Vec<RuleAttr>,
 }
@@ -76,11 +77,18 @@ fn expand(input: DeriveInput) -> SynResult<proc_macro2::TokenStream> {
         let env_key = attrs
             .from
             .unwrap_or_else(|| ident.to_string().to_ascii_uppercase());
+        if optional && attrs.default.is_none() {
+            return Err(Error::new_spanned(
+                ident,
+                "optional fields (Option<T>) require #[envro(default = \"...\")]",
+            ));
+        }
         check_type_rules(ty_kind, &attrs.rules, ident)?;
         infos.push(FieldInfo {
             name: ident.clone(),
             env_key,
             optional,
+            default: attrs.default,
             ty_kind,
             rules: attrs.rules,
         });
@@ -88,10 +96,9 @@ fn expand(input: DeriveInput) -> SynResult<proc_macro2::TokenStream> {
 
     let schema_fields = infos.iter().map(|f| {
         let key = &f.env_key;
-        let presence = if f.optional {
-            quote! { ::envro::Field::optional() }
-        } else {
-            quote! { ::envro::Field::required() }
+        let presence = match &f.default {
+            Some(default) => quote! { ::envro::Field::default_value(#default) },
+            None => quote! { ::envro::Field::required() },
         };
         let rules = f.rules.iter().map(rule_tokens);
         quote! {
@@ -106,7 +113,7 @@ fn expand(input: DeriveInput) -> SynResult<proc_macro2::TokenStream> {
         let key = &f.env_key;
         let fn_name = coerce_fn_name(f.ty_kind, f.optional);
         quote! {
-            #name: ::envro::coerce::#fn_name(vars, #key)?
+            #name: ::envro::coerce::#fn_name(&vars, #key)?
         }
     });
 
@@ -118,7 +125,9 @@ fn expand(input: DeriveInput) -> SynResult<proc_macro2::TokenStream> {
             }
 
             fn from_vars(vars: &::envro::EnvroVars) -> ::std::result::Result<Self, ::envro::EnvroError> {
-                ::envro::validate(vars, &Self::schema())?;
+                let schema = Self::schema();
+                let vars = schema.apply_defaults(vars);
+                ::envro::validate(&vars, &schema)?;
                 ::std::result::Result::Ok(Self {
                     #(#coerce_fields),*
                 })
@@ -133,6 +142,10 @@ fn expand(input: DeriveInput) -> SynResult<proc_macro2::TokenStream> {
                         }
                     }
                 }
+                // Fast path: skip the whole resolver when no value even
+                // contains `$`. This is the common CD case (flat knobs).
+                let needs_expand = vars.values().any(|v| v.as_bytes().contains(&b'$'));
+                let vars = if needs_expand { ::envro::expand_vars(&vars) } else { vars };
                 Self::from_vars(&vars)
             }
         }
@@ -179,12 +192,14 @@ fn rule_tokens(rule: &RuleAttr) -> proc_macro2::TokenStream {
 
 struct ParsedAttrs {
     from: Option<String>,
+    default: Option<String>,
     rules: Vec<RuleAttr>,
 }
 
 fn parse_envro_attrs(attrs: &[Attribute]) -> SynResult<ParsedAttrs> {
     let mut out = ParsedAttrs {
         from: None,
+        default: None,
         rules: Vec::new(),
     };
     for attr in attrs {
@@ -204,6 +219,13 @@ fn parse_envro_attrs(attrs: &[Attribute]) -> SynResult<ParsedAttrs> {
                         return Err(meta.error("from expects a string"));
                     };
                     out.from = Some(s.value());
+                }
+                "default" => {
+                    let value: Lit = meta.value()?.parse()?;
+                    let Lit::Str(s) = value else {
+                        return Err(meta.error("default expects a string"));
+                    };
+                    out.default = Some(s.value());
                 }
                 "min_len" => out.rules.push(RuleAttr::MinLen(parse_usize(&meta)?)),
                 "max_len" => out.rules.push(RuleAttr::MaxLen(parse_usize(&meta)?)),

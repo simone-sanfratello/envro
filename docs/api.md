@@ -10,7 +10,7 @@ Full rustdoc: [docs.rs/envro](https://docs.rs/envro).
 | [`EnvroError`](https://docs.rs/envro/latest/envro/enum.EnvroError.html) | `File` / `Parse` / `Validation { errors }` |
 | [`ValidationIssue`](https://docs.rs/envro/latest/envro/struct.ValidationIssue.html) | One failure: `{ key, rule, reason }` |
 | [`Schema`](https://docs.rs/envro/latest/envro/struct.Schema.html) | Collection of `(name, Field)` specs |
-| [`Field`](https://docs.rs/envro/latest/envro/struct.Field.html) | Required/optional field + chained rules |
+| [`Field`](https://docs.rs/envro/latest/envro/struct.Field.html) | Required / `default_value(...)` field + chained rules |
 | [`Value`](https://docs.rs/envro/latest/envro/enum.Value.html) | Coercion target used by the derive path |
 
 ## Traits
@@ -23,23 +23,26 @@ Full rustdoc: [docs.rs/envro](https://docs.rs/envro).
 ### `EnvroConfig` methods
 
 - `schema() -> Schema`
-- `from_vars(&EnvroVars) -> Result<Self, EnvroError>`
-- `from_dotenv(&Path) -> Result<Self, EnvroError>`
-- `from_env() -> Result<Self, EnvroError>`
+- `from_vars(&EnvroVars) -> Result<Self, EnvroError>` — validate/coerce a map as-is (no `${VAR}` expansion)
+- `from_dotenv(&Path) -> Result<Self, EnvroError>` — load `.env` (already expanded), then `from_vars`
+- `from_env() -> Result<Self, EnvroError>` — collect schema keys from process env, expand `${VAR}`, then `from_vars`
 
 Supported field types: `String`, `bool`, `i32`, `i64`, `u16`, `u32`, `u64`, `f32`, `f64`, and `Option<T>` of those.
 
 Default env key: screaming-snake of the field name (`retry_count` → `RETRY_COUNT`). Override with `from = "KEY"`.
 
+Optional values: `#[envro(default = "...")]` — used when the key is missing or empty. **Required** on `Option<T>` fields. Also valid on concrete types (makes the env key optional). `Schema::apply_defaults` fills missing keys before coerce.
+
 ## Functions
 
 | Function | Role |
 | --- | --- |
-| [`load_dotenv(path)`](https://docs.rs/envro/latest/envro/fn.load_dotenv.html) | Parse `.env` → `EnvroVars` (no process mutation) |
+| [`load_dotenv(path)`](https://docs.rs/envro/latest/envro/fn.load_dotenv.html) | Parse `.env` → `EnvroVars` (no process mutation; expands `${VAR}`) |
 | [`load_dotenv_in_env_vars(path, override_existing)`](https://docs.rs/envro/latest/envro/fn.load_dotenv_in_env_vars.html) | Parse and set process env |
 | [`load_dotenv_validated(path, &schema)`](https://docs.rs/envro/latest/envro/fn.load_dotenv_validated.html) | Parse `.env`, then validate |
+| [`expand_vars(&vars)`](https://docs.rs/envro/latest/envro/fn.expand_vars.html) | Expand `${VAR}` across a map (order-independent) |
 | [`validate(&vars, &schema)`](https://docs.rs/envro/latest/envro/fn.validate.html) | Validate any map |
-| [`validate_env(&schema)`](https://docs.rs/envro/latest/envro/fn.validate_env.html) | Validate the live process environment |
+| [`validate_env(&schema)`](https://docs.rs/envro/latest/envro/fn.validate_env.html) | Validate the live process environment (raw; no expansion) |
 
 ### `load_dotenv_in_env_vars` override
 
@@ -57,3 +60,4 @@ Same `Schema` works on:
 3. Process env — `validate_env(&schema)`
 
 See [validation.md](./validation.md) for rules and semantics, [dotenv-format.md](./dotenv-format.md) for the file dialect.
+

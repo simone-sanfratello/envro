@@ -10,6 +10,7 @@ Env vars for Rust: validate with a composable rule set, load `.env` into `std::e
 - **Validate** env vars against a `Schema` of composable rules — works on any `HashMap`, a `.env` file, or the live process environment
 - **Load** a `.env` into the process with an explicit override policy, or **parse** it to a map with no side effects
 - **Derive** a typed `Config` with `#[derive(Envro)]` — field types are coerce targets; `#[envro(...)]` attrs are the rules; values still load at runtime
+- **Defaults** for optional vars — `Field::default_value("…")` / `#[envro(default = "…")]` (required for `Option<T>`)
 - **Compose** derived values with `${VAR}` substitution, then validate each part
 - **Small `.env` dialect** — comments, quotes, multiline, duplicate keys rejected
 
@@ -41,7 +42,7 @@ struct Config {
     #[envro(from = "DB_POOL_SIZE", positive_integer)]
     db_pool_size: i64,
 
-    #[envro(from = "LOG_LEVEL", one_of("debug", "info", "warn", "error"))]
+    #[envro(from = "LOG_LEVEL", default = "info", one_of("debug", "info", "warn", "error"))]
     log_level: String,
 
     #[envro(from = "FEATURE_METRICS", boolean)]
@@ -73,7 +74,7 @@ match Config::from_dotenv(&env_file) {
 
 ### Real-world: CD / process env
 
-In CI/CD and containers you get flat process env vars — not `.env` substitution. Validate each knob, then compose derived values in Rust:
+In CI/CD and containers you inject process env vars. Validate each knob, and compose derived values with `${VAR}` — `Config::from_env()` expands them the same way as a `.env` file:
 
 ```rust
 use envro::{Envro, EnvroConfig};
@@ -98,17 +99,12 @@ struct Config {
     #[envro(from = "PG_SSLMODE", one_of("disable", "require", "verify-full"))]
     pg_sslmode: String,
 
+    // e.g. DATABASE_URI=pg://${PG_USER}:${PG_PASS}@${PG_HOST}:${PG_PORT}/${PG_DB}?sslmode=${PG_SSLMODE}
+    #[envro(from = "DATABASE_URI", starts_with = "pg://")]
+    database_uri: String,
+
     #[envro(from = "DB_POOL_SIZE", positive_integer)]
     db_pool_size: i64,
-}
-
-impl Config {
-    fn database_uri(&self) -> String {
-        format!(
-            "pg://{}:{}@{}:{}/{}?sslmode={}",
-            self.pg_user, self.pg_pass, self.pg_host, self.pg_port, self.pg_db, self.pg_sslmode
-        )
-    }
 }
 
 fn main() -> Result<(), envro::EnvroError> {
@@ -119,14 +115,14 @@ fn main() -> Result<(), envro::EnvroError> {
     }
 
     let config = Config::from_env()?;
-    println!("{}", config.database_uri());
+    println!("{}", config.database_uri);
     Ok(())
 }
 ```
 
 Runnable version: `cd example && cargo run --bin example`.
 
-`${VAR}` expansion is a `.env`-file feature only — see [docs/dotenv-format.md](docs/dotenv-format.md).
+See [docs/dotenv-format.md](docs/dotenv-format.md) for `${VAR}` rules.
 
 ### Without derive
 
@@ -137,7 +133,10 @@ use envro::*;
 
 let schema = Schema::new()
     .field("APP_PORT", Field::required().port())
-    .field("LOG_LEVEL", Field::required().one_of(&["debug", "info", "warn", "error"]));
+    .field(
+        "LOG_LEVEL",
+        Field::default_value("info").one_of(&["debug", "info", "warn", "error"]),
+    );
 
 validate_env(&schema)?;
 // or: load_dotenv_validated(&path, &schema)?;  validate(&vars, &schema)?;
@@ -160,7 +159,6 @@ validate_env(&schema)?;
 
 ## TODO
 
-- optional, default values
 - encryption
 
 ## License

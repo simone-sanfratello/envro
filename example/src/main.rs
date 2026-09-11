@@ -1,15 +1,15 @@
-//! Compose a DATABASE_URI from validated parts via `${VAR}` substitution.
+//! Validate PG_* knobs from process env (CD-friendly), compose the DSN in Rust.
 //!
 //! Run from the `example/` directory:
 //!
 //! ```bash
-//! cd example && cargo run
+//! cd example && cargo run --bin example
 //! ```
 
 use std::env;
 use std::process;
 
-use envro::{Envro, EnvroConfig};
+use envro::{load_dotenv_in_env_vars, Envro, EnvroConfig};
 
 #[derive(Debug, Envro)]
 struct Config {
@@ -31,17 +31,27 @@ struct Config {
     #[envro(from = "PG_SSLMODE", one_of("disable", "require", "verify-full"))]
     pg_sslmode: String,
 
-    #[envro(from = "DATABASE_URI", min_len = 1, starts_with = "pg://")]
-    database_uri: String,
-
     #[envro(from = "DB_POOL_SIZE", positive_integer)]
     db_pool_size: i64,
 }
 
+impl Config {
+    fn database_uri(&self) -> String {
+        format!(
+            "pg://{}:{}@{}:{}/{}?sslmode={}",
+            self.pg_user, self.pg_pass, self.pg_host, self.pg_port, self.pg_db, self.pg_sslmode
+        )
+    }
+}
+
 fn main() {
     let env_file = env::current_dir().unwrap().join(".env-sample");
+    if let Err(err) = load_dotenv_in_env_vars(&env_file, false) {
+        eprintln!("load failed: {err}");
+        process::exit(1);
+    }
 
-    let config = match Config::from_dotenv(&env_file) {
+    let config = match Config::from_env() {
         Ok(c) => c,
         Err(err) => {
             eprintln!("validation failed: {err}");
@@ -57,6 +67,6 @@ fn main() {
     println!("  PG_DB={}", config.pg_db);
     println!("  PG_SSLMODE={}", config.pg_sslmode);
     println!();
-    println!("DATABASE_URI={}", config.database_uri);
+    println!("DATABASE_URI={}", config.database_uri());
     println!("DB_POOL_SIZE={}", config.db_pool_size);
 }

@@ -8,7 +8,7 @@ struct Config {
     #[envro(from = "PORT", port)]
     port: u16,
 
-    #[envro(from = "OFFSET", integer)]
+    #[envro(from = "OFFSET", integer, default = "0")]
     offset: Option<i64>,
 
     #[envro(from = "FEATURE_X", boolean)]
@@ -49,7 +49,7 @@ fn from_vars_optional_missing() {
     vars.insert("DB_POOL_SIZE".into(), "1".into());
 
     let cfg = Config::from_vars(&vars).unwrap();
-    assert_eq!(cfg.offset, None);
+    assert_eq!(cfg.offset, Some(0));
     assert!(!cfg.feature_x);
 }
 
@@ -113,11 +113,100 @@ fn from_env_reads_process() {
 
     let cfg = Config::from_env().unwrap();
     assert_eq!(cfg.port, 9090);
-    assert_eq!(cfg.offset, None);
+    assert_eq!(cfg.offset, Some(0));
     assert_eq!(cfg.db_pool_size, 8);
 
     std::env::remove_var("APP_NAME");
     std::env::remove_var("PORT");
     std::env::remove_var("FEATURE_X");
     std::env::remove_var("DB_POOL_SIZE");
+}
+
+#[test]
+fn default_fills_non_option() {
+    #[derive(Debug, Envro, PartialEq)]
+    struct S {
+        #[envro(
+            from = "LOG_LEVEL",
+            default = "info",
+            one_of("debug", "info", "warn", "error")
+        )]
+        log_level: String,
+    }
+    let cfg = S::from_vars(&EnvroVars::new()).unwrap();
+    assert_eq!(cfg.log_level, "info");
+
+    let mut vars = EnvroVars::new();
+    vars.insert("LOG_LEVEL".into(), "debug".into());
+    assert_eq!(S::from_vars(&vars).unwrap().log_level, "debug");
+}
+
+#[test]
+#[serial_test::serial]
+fn from_env_expands_var_refs() {
+    #[derive(Debug, Envro, PartialEq)]
+    struct DsnConfig {
+        #[envro(from = "DSN_HOST", min_len = 1)]
+        dsn_host: String,
+        #[envro(from = "DSN_URL", min_len = 1)]
+        dsn_url: String,
+    }
+
+    std::env::set_var("DSN_HOST", "db.example.com");
+    std::env::set_var("DSN_URL", "pg://user@${DSN_HOST}/mydb");
+
+    let cfg = DsnConfig::from_env().unwrap();
+    assert_eq!(cfg.dsn_host, "db.example.com");
+    assert_eq!(cfg.dsn_url, "pg://user@db.example.com/mydb");
+
+    std::env::remove_var("DSN_HOST");
+    std::env::remove_var("DSN_URL");
+}
+
+#[test]
+#[serial_test::serial]
+fn from_env_var_ref_falls_back_to_process_env() {
+    #[derive(Debug, Envro, PartialEq)]
+    struct S {
+        // Only URL is a schema key; HOST lives only in the process env.
+        #[envro(from = "URL_ONLY", min_len = 1)]
+        url_only: String,
+    }
+
+    std::env::set_var("NON_SCHEMA_HOST", "h.example.com");
+    std::env::set_var("URL_ONLY", "pg://${NON_SCHEMA_HOST}/x");
+
+    let cfg = S::from_env().unwrap();
+    assert_eq!(cfg.url_only, "pg://h.example.com/x");
+
+    std::env::remove_var("NON_SCHEMA_HOST");
+    std::env::remove_var("URL_ONLY");
+}
+
+#[test]
+#[serial_test::serial]
+fn from_env_unknown_ref_and_literal_dollar_brace() {
+    #[derive(Debug, Envro, PartialEq)]
+    struct S {
+        #[envro(from = "MISSING_EMBED")]
+        missing_embed: String,
+        #[envro(from = "LITERAL_KEEP")]
+        literal_keep: String,
+        #[envro(from = "BARE_DOLLAR")]
+        bare_dollar: String,
+    }
+
+    std::env::remove_var("TOTALLY_UNSET_ENVRO_XYZ");
+    std::env::set_var("MISSING_EMBED", "before-${TOTALLY_UNSET_ENVRO_XYZ}-after");
+    std::env::set_var("LITERAL_KEEP", r"\${KEEP_ME}");
+    std::env::set_var("BARE_DOLLAR", "$2a$10$abc");
+
+    let cfg = S::from_env().unwrap();
+    assert_eq!(cfg.missing_embed, "before--after");
+    assert_eq!(cfg.literal_keep, "${KEEP_ME}");
+    assert_eq!(cfg.bare_dollar, "$2a$10$abc");
+
+    std::env::remove_var("MISSING_EMBED");
+    std::env::remove_var("LITERAL_KEEP");
+    std::env::remove_var("BARE_DOLLAR");
 }

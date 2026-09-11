@@ -268,8 +268,12 @@ mod tests {
         assert!(parse_u64("x").is_err());
         assert_eq!(parse_f32("1.5").unwrap(), 1.5);
         assert!(parse_f32("x").is_err());
+        assert!(parse_f32("inf").is_err());
+        assert!(parse_f32("nan").is_err());
         assert_eq!(parse_f64("2.5").unwrap(), 2.5);
         assert!(parse_f64("x").is_err());
+        assert!(parse_f64("inf").is_err());
+        assert!(parse_f64("nan").is_err());
     }
 
     #[test]

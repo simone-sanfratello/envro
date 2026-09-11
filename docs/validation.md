@@ -5,7 +5,7 @@ Envro validates env vars with a composable rule set. Validation is **opt-in** an
 ## At a glance
 
 - Build a `Schema` of `Field` specs, one per env var.
-- Every `Field` starts as `Field::required()` or `Field::optional()`, then chains rules.
+- Every `Field` starts as `Field::required()` or `Field::default_value(...)`, then chains rules.
 - Prefer `#[derive(Envro)]` when you also want typed fields — see the [README](../README.md) and [api.md](./api.md). Hand-written `Schema` stays useful for maps, tests, and validating without a struct.
 
 ```rust
@@ -32,7 +32,7 @@ validate_env(&schema)?;
 
 | Situation | Behavior |
 | --- | --- |
-| Key missing from the map | `required` fails; `optional` skips remaining rules |
+| Key missing from the map | `required` fails; `default_value(...)` validates `default` |
 | Key present with `""` | Same as missing (empty is treated as absent) |
 | Key present with a value | Every rule on the field is checked; all failures are collected |
 | Key in the map but not in the schema | Ignored |
@@ -45,8 +45,8 @@ validate_env(&schema)?;
 Every field starts here. It is the only rule that is **not** chained.
 
 ```rust
-Field::required()                 // must be present and non-empty
-Field::optional().min_len(3)      // if present, must be >= 3 chars
+Field::required()                    // must be present and non-empty
+Field::default_value("info").min_len(3)   // missing/empty → use "info", then rules
 ```
 
 ```env
@@ -56,7 +56,17 @@ APP_NAME=
 # required  -> passes
 APP_NAME=envro
 
-# optional  -> passes (missing entirely, other rules skipped)
+# default_value("info")  -> passes (uses default "info")
+```
+
+With `#[derive(Envro)]`:
+
+```rust
+#[envro(default = "info", one_of("debug", "info", "warn", "error"))]
+log_level: String,
+
+#[envro(integer, default = "0")]
+offset: Option<i64>,  // Option<T> requires default =
 ```
 
 ## Rule reference
@@ -290,7 +300,7 @@ Each entry shows a schema snippet and one `.env` value that passes and one that 
 
 - `email()` — `local@domain`, no whitespace, both sides non-empty. Practical, not RFC 5322.
   ```rust
-  Field::optional().email()
+  Field::default_value("").email()
   ```
   ```env
   ADMIN_EMAIL=ops@example.com   # ok
@@ -355,12 +365,12 @@ Each entry shows a schema snippet and one `.env` value that passes and one that 
   TAGS=alpha,,gamma       # fail: TAGS[1] required
   ```
 
-- optional items, empty parts skipped:
+- optional items, empty parts use the item default:
   ```rust
-  Field::required().list(',', Field::optional().min_len(2))
+  Field::required().list(',', Field::default_value("xx").min_len(2))
   ```
   ```env
-  T=aa,,cc     # ok (empty middle skipped)
+  T=aa,,cc     # ok (empty middle → "xx")
   T=a,bb,cc    # fail: T[0] min_len
   ```
 

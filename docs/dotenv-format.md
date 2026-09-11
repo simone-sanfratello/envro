@@ -29,9 +29,11 @@ HASH=$2a$10$abc
 
 `NAME` must match `[A-Za-z_][A-Za-z0-9_]*`. Expansion is order-independent: all keys are parsed first, then `${VAR}` refs are resolved across the file (and the process env) in as many passes as needed. Circular references resolve to empty strings. There is no `${NAME:-default}` syntax.
 
-## `${VAR}` is `.env`-only
+## Where substitution runs
 
-Substitution runs when parsing a `.env` file. Process env from CI/CD does **not** expand `${VAR}` — validate flat knobs and compose derived values in Rust. See [README — CD / process env](../README.md#real-world-cd--process-env) and `example/`.
+- **`.env` files** — [`load_dotenv`](https://docs.rs/envro/latest/envro/fn.load_dotenv.html) expands after the whole file is parsed.
+- **`Config::from_env()`** — expands schema keys collected from the process environment before validate/coerce (same `${VAR}` rules).
+- **`from_vars` / `validate_env`** — do **not** expand; pass already-expanded values, or call [`expand_vars`](https://docs.rs/envro/latest/envro/fn.expand_vars.html) yourself.
 
 For local `.env` files, definition order does not matter: all keys are parsed first, then refs resolve.
 
@@ -82,4 +84,5 @@ Escapes inside quotes: `\"` — a literal `"`; a trailing `\"` on a line therefo
 | `KEY=a` + `KEY=b` (same file) | `PARSE_ERROR ... duplicate variable name: KEY` |
 
 Anything a `.env` file rejects surfaces as `EnvroError::Parse`; unreadable / missing files surface as `EnvroError::File`. See [validation.md](./validation.md) for `EnvroError::Validation`.
+
 

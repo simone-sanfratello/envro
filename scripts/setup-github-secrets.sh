@@ -23,6 +23,7 @@ echo "==> repo: ${REPO}"
 echo
 echo "Secrets used by Release workflow:"
 echo "  CARGO_REGISTRY_TOKEN   required — crates.io API token (cargo publish)"
+echo "                         must cover crates: envro-derive, envro"
 echo "  RELEASE_GITHUB_TOKEN   recommended — classic PAT with 'repo' scope"
 echo "                         (needed to push bump commits/tags to main;"
 echo "                         falls back to GITHUB_TOKEN if unset)"
@@ -35,7 +36,8 @@ if [[ -n "${CARGO_REGISTRY_TOKEN:-}" ]]; then
 else
   echo "==> setting CARGO_REGISTRY_TOKEN (paste crates.io token, then Enter)"
   echo "    create at: https://crates.io/settings/tokens"
-  echo "    scope: publish-update for crate 'envro'"
+  echo "    scope: publish-update for crates 'envro-derive' and 'envro'"
+  echo "    (use publish-new once when introducing a new crate name)"
   gh secret set CARGO_REGISTRY_TOKEN --repo "$REPO"
 fi
 
@@ -57,3 +59,4 @@ echo "==> current secrets:"
 gh secret list --repo "$REPO"
 echo
 echo "==> done"
+

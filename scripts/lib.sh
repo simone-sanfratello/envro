@@ -75,3 +75,25 @@ ensure_cmd() {
     return 1
   fi
 }
+
+# Publish a workspace package; treat "already on crates.io" as success (re-runs).
+publish_crate() {
+  local pkg="$1"
+  local out status
+
+  echo "==> publish ${pkg}"
+  set +e
+  out="$(cargo publish -p "$pkg" 2>&1)"
+  status=$?
+  set -e
+  printf '%s\n' "$out"
+  if [[ "$status" -eq 0 ]]; then
+    return 0
+  fi
+  if printf '%s\n' "$out" | grep -qiE 'already exists|already uploaded'; then
+    echo "==> ${pkg} already on crates.io; continuing"
+    return 0
+  fi
+  return "$status"
+}
+

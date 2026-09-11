@@ -37,11 +37,12 @@ echo "==> push main and tags"
 git push origin main
 git push origin "refs/tags/$(git describe --tags --exact-match HEAD)"
 
-echo "==> publish crates"
-cargo publish -p envro-derive
+echo "==> publish crates (envro-derive first, then envro)"
+publish_crate envro-derive
 sleep 30
-cargo publish -p envro
+publish_crate envro
 
 echo "==> release done"
+
 
 

@@ -95,14 +95,21 @@ fn decrypt_with_dyn<'a>(
     String::from_utf8(plaintext).map_err(|e| crypto_err(key, format!("plaintext not utf-8: {e}")))
 }
 
+fn home_dir() -> Option<PathBuf> {
+    // Unix: HOME. Windows CI/agents often only set USERPROFILE.
+    env::var_os("HOME")
+        .or_else(|| env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+}
+
 pub(crate) fn expand_tilde(path: &str) -> PathBuf {
     if path == "~" {
-        if let Some(home) = env::var_os("HOME") {
-            return PathBuf::from(home);
+        if let Some(home) = home_dir() {
+            return home;
         }
     } else if let Some(rest) = path.strip_prefix("~/") {
-        if let Some(home) = env::var_os("HOME") {
-            return PathBuf::from(home).join(rest);
+        if let Some(home) = home_dir() {
+            return home.join(rest);
         }
     }
     PathBuf::from(path)
@@ -173,28 +180,35 @@ mod tests {
         LOCK.get_or_init(|| Mutex::new(()))
     }
 
+    fn lock_env() -> std::sync::MutexGuard<'static, ()> {
+        env_lock().lock().unwrap_or_else(|p| p.into_inner())
+    }
+
     #[test]
     fn expand_tilde_home_and_relative() {
-        let _g = env_lock().lock().unwrap();
-        let home = env::var("HOME").expect("HOME");
-        assert_eq!(expand_tilde("~"), PathBuf::from(&home));
-        assert_eq!(
-            expand_tilde("~/foo/bar"),
-            PathBuf::from(&home).join("foo/bar")
-        );
+        let _g = lock_env();
+        let home = home_dir().expect("HOME or USERPROFILE");
+        assert_eq!(expand_tilde("~"), home);
+        assert_eq!(expand_tilde("~/foo/bar"), home.join("foo/bar"));
         assert_eq!(expand_tilde("/abs/path"), PathBuf::from("/abs/path"));
     }
 
     #[test]
     fn expand_tilde_without_home_falls_back_to_literal() {
-        let _g = env_lock().lock().unwrap();
-        let prev = env::var_os("HOME");
+        let _g = lock_env();
+        let prev_home = env::var_os("HOME");
+        let prev_profile = env::var_os("USERPROFILE");
         env::remove_var("HOME");
+        env::remove_var("USERPROFILE");
         assert_eq!(expand_tilde("~"), PathBuf::from("~"));
         assert_eq!(expand_tilde("~/x"), PathBuf::from("~/x"));
-        match prev {
+        match prev_home {
             Some(v) => env::set_var("HOME", v),
             None => env::remove_var("HOME"),
+        }
+        match prev_profile {
+            Some(v) => env::set_var("USERPROFILE", v),
+            None => env::remove_var("USERPROFILE"),
         }
     }
 }

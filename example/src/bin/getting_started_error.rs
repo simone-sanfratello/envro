@@ -18,7 +18,7 @@ struct Config {
     #[envro(from = "APP_PORT", port)]
     app_port: u16,
 
-    #[envro(from = "DATABASE_URL", min_len = 1, starts_with = "postgres://")]
+    #[envro(from = "DATABASE_URL", min_len = 1, starts_with = "pg://")]
     database_url: String,
 
     #[envro(from = "DB_POOL_SIZE", positive_integer)]

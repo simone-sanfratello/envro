@@ -2,7 +2,7 @@
 
 [`.github/workflows/release.yml`](../.github/workflows/release.yml) runs on every push to `main`, and can also be started manually (**Actions → Release → Run workflow**). It follows the same flow as `just release`:
 
-1. `cargo fmt --check` and `cargo test`
+1. `cargo fmt --check` and `cargo test --all-features`
 2. `cz bump` (version commit + tag + changelog)
 3. Push commit and tags to `main`
 4. `cargo publish -p envro-derive` then `cargo publish -p envro` to crates.io

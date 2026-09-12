@@ -36,7 +36,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
 use std::str::FromStr;
 
-use crate::{load_dotenv, EnvroError, EnvroVars};
+use crate::{EnvroError, EnvroVars};
 
 /// A single validation failure for one key (or list element).
 #[derive(Debug, Clone)]
@@ -113,6 +113,9 @@ enum Rule {
         min_items: Option<usize>,
         max_items: Option<usize>,
     },
+    /// Secret: plaintext rejected in `.env`; OK in process env / from_vars (feature `encryption`).
+    #[cfg(feature = "encryption")]
+    Secret,
 }
 
 /// A composable field spec.
@@ -151,6 +154,11 @@ impl Field {
             Presence::Optional { default } => Some(default.as_str()),
             Presence::Required => None,
         }
+    }
+
+    #[cfg(feature = "encryption")]
+    fn is_secret(&self) -> bool {
+        self.rules.iter().any(|r| matches!(r, Rule::Secret))
     }
 
     // --- string shape ---
@@ -200,6 +208,18 @@ impl Field {
         self.rules.push(Rule::Uppercase);
         self
     }
+
+    /// Mark as a secret (feature `encryption`).
+    ///
+    /// In `.env` / `from_dotenv` / `load_dotenv_validated`, the raw value must be
+    /// `Encrypted[AGE:b64:…]`. Process env / `from_vars` / CI plaintext is allowed;
+    /// this rule is a no-op during [`validate`].
+    #[cfg(feature = "encryption")]
+    pub fn secret(mut self) -> Self {
+        self.rules.push(Rule::Secret);
+        self
+    }
+
     /// Must start with the given substring.
     pub fn starts_with(mut self, s: impl Into<String>) -> Self {
         self.rules.push(Rule::StartsWith(s.into()));
@@ -386,6 +406,32 @@ impl Schema {
         }
         out
     }
+
+    /// Reject plaintext values on `secret` fields in a raw (pre-decrypt) `.env` map.
+    #[cfg(feature = "encryption")]
+    pub(crate) fn ensure_secrets_encrypted(
+        &self,
+        vars: &crate::EnvroVars,
+    ) -> Result<(), crate::EnvroError> {
+        for (key, field) in &self.fields {
+            if !field.is_secret() {
+                continue;
+            }
+            let Some(value) = vars.get(key) else {
+                continue;
+            };
+            if value.is_empty() {
+                continue;
+            }
+            if !crate::crypto::is_encrypted_marker(value) {
+                return Err(crate::EnvroError::Decrypt {
+                    key: key.clone(),
+                    reason: "secret field must use Encrypted[AGE:b64:…] in .env files".into(),
+                });
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Validate an arbitrary `EnvroVars` map against a schema.
@@ -412,7 +458,10 @@ pub fn validate(vars: &EnvroVars, schema: &Schema) -> Result<(), EnvroError> {
 
 /// Load a `.env` file and validate it in one step.
 pub fn load_dotenv_validated(path: &Path, schema: &Schema) -> Result<EnvroVars, EnvroError> {
-    let vars = schema.apply_defaults(&load_dotenv(path)?);
+    let raw = crate::parse_dotenv(path)?;
+    #[cfg(feature = "encryption")]
+    schema.ensure_secrets_encrypted(&raw)?;
+    let vars = schema.apply_defaults(&crate::finalize_dotenv(raw)?);
     validate(&vars, schema)?;
     Ok(vars)
 }
@@ -468,6 +517,11 @@ fn check_rule(key: &str, value: &str, rule: &Rule, out: &mut Vec<ValidationIssue
         reason,
     };
     match rule {
+        #[cfg(feature = "encryption")]
+        Rule::Secret => {
+            // Source-dependent: enforced in ensure_secrets_encrypted for `.env`;
+            // no-op for from_vars / validate_env / CI plaintext.
+        }
         Rule::MinLen(n) => {
             let l = value.chars().count();
             if l < *n {

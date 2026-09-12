@@ -55,7 +55,7 @@ jobs:
         run: cargo fmt --check
 
       - name: Tests
-        run: cargo test --tests -- --test-threads=1
+        run: cargo test --all-features --tests -- --test-threads=1
 
       - name: Install commitizen
         run: pipx install commitizen

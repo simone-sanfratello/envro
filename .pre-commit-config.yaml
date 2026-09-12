@@ -10,7 +10,7 @@ repos:
 
       - id: cargo-test
         name: cargo test
-        entry: cargo test -- --test-threads=1
+        entry: cargo test --all-features -- --test-threads=1
         language: system
         pass_filenames: false
         fail_fast: true

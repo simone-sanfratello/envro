@@ -19,14 +19,14 @@ echo "==> format check"
 cargo fmt --check
 
 echo "==> tests"
-cargo test --tests -- --test-threads=1
+cargo test --all-features --tests -- --test-threads=1
 
 echo "==> coverage"
 if ! require_cmd cargo-tarpaulin; then
   echo "error: cargo-tarpaulin not found; run: just setup" >&2
   exit 1
 fi
-cargo tarpaulin --tests --fail-under 100 --exclude-files 'target/*'
+cargo tarpaulin --engine Llvm --tests --all-features --fail-under 100 --exclude-files 'target/*'
 
 echo "==> bump version (commitizen)"
 ensure_cmd cz commitizen

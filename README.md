@@ -166,7 +166,7 @@ validate_env(&schema)?;
 - **Never commit `.env`** — add `.env` to `.gitignore`; commit `.env-sample` / docs with placeholder values only
 - **Validate at the boundary** — load optional local `.env`, then `Config::from_env()` / `validate_env` so missing or bad vars fail fast
 - **Mark secrets** — `#[envro(secret)]` / `Field::secret()` so plaintext secrets in a `.env` are rejected ([docs/encryption.md](docs/encryption.md))
-- **CD injects plaintext** — CI/containers set process env; do not ship `.env` into prod images
+- **Don't use `.env` to prod** — inject config at deploy time via CI/containers as process env ([Zero Trust: protect identities](https://learn.microsoft.com/en-us/entra/fundamentals/zero-trust-protect-identities))
 - **One identity per project** — keep age private keys outside the repo (`ENVRO_AGE_IDENTITY_FILE`); never reuse one key across all apps
 - **Prefer compose over duplication** — build URLs with `${VAR}` and validate parts + the composed value
 - **Fail closed in prod** — required fields, tight `one_of` / length / format rules; defaults only where a safe fallback exists

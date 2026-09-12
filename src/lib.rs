@@ -5,8 +5,14 @@ use std::{env, fs, path::Path};
 pub mod coerce;
 mod validate;
 
+#[cfg(feature = "encryption")]
+mod crypto;
+
 pub use coerce::Value;
 pub use validate::{load_dotenv_validated, validate, validate_env, Field, Schema, ValidationIssue};
+
+#[cfg(feature = "encryption")]
+pub use crypto::{decrypt_value, encrypt_value};
 
 pub use envro_derive::Envro;
 
@@ -22,8 +28,11 @@ pub trait EnvroConfig: Sized {
     fn from_vars(vars: &EnvroVars) -> Result<Self, EnvroError>;
 
     /// Load a `.env` file, then [`from_vars`](Self::from_vars).
+    ///
+    /// With feature `encryption`, `#[envro(secret)]` fields must be `Encrypted[AGE:b64:…]`
+    /// in the file (checked before decrypt via [`load_dotenv_validated`]).
     fn from_dotenv(path: &Path) -> Result<Self, EnvroError> {
-        let vars = load_dotenv(path)?;
+        let vars = load_dotenv_validated(path, &Self::schema())?;
         Self::from_vars(&vars)
     }
 
@@ -43,6 +52,8 @@ pub enum EnvroError {
     Parse { line: String, reason: String },
     #[error("VALIDATION_ERROR {}", validate::format_issues(errors))]
     Validation { errors: Vec<ValidationIssue> },
+    #[error("DECRYPT_ERROR key {key}: {reason}")]
+    Decrypt { key: String, reason: String },
 }
 
 pub type EnvroVars = HashMap<String, String>;
@@ -248,18 +259,8 @@ pub fn expand_vars(raw: &EnvroVars) -> EnvroVars {
     resolved
 }
 
-/// load .env file into process.env var
-///
-/// # Examples
-///
-/// ```
-/// use std::env;
-/// use envro::*;
-///
-/// let env_file = env::current_dir().unwrap().join(".env-sample");
-/// let env_vars = load_dotenv(&env_file).unwrap();
-/// ```
-pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
+/// Parse a `.env` file into a raw map (no decrypt, no `${VAR}` expand).
+pub(crate) fn parse_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
     let file_content = match fs::read_to_string(file_name) {
         Ok(c) => c,
         Err(err) => {
@@ -371,7 +372,40 @@ pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
         }
     }
 
+    Ok(vars)
+}
+
+/// Decrypt (feature `encryption`) or reject ciphertext, then expand `${VAR}`.
+pub(crate) fn finalize_dotenv(vars: EnvroVars) -> Result<EnvroVars, EnvroError> {
+    #[cfg(feature = "encryption")]
+    let vars = crypto::decrypt_dotenv_vars(vars)?;
+    #[cfg(not(feature = "encryption"))]
+    {
+        for (key, value) in &vars {
+            if value.starts_with("Encrypted[AGE:b64:") && value.ends_with(']') {
+                return Err(EnvroError::Decrypt {
+                    key: key.clone(),
+                    reason: "Encrypted[…] value requires envro feature `encryption`".into(),
+                });
+            }
+        }
+    }
     Ok(expand_vars(&vars))
+}
+
+/// load .env file into process.env var
+///
+/// # Examples
+///
+/// ```
+/// use std::env;
+/// use envro::*;
+///
+/// let env_file = env::current_dir().unwrap().join(".env-sample");
+/// let env_vars = load_dotenv(&env_file).unwrap();
+/// ```
+pub fn load_dotenv(file_name: &Path) -> Result<EnvroVars, EnvroError> {
+    finalize_dotenv(parse_dotenv(file_name)?)
 }
 
 /// Load vars from an env file into process environment variables.
@@ -411,7 +445,7 @@ pub fn load_dotenv_in_env_vars(
 
 #[cfg(test)]
 mod tests {
-    use std::{env, fs::File, io::Write};
+    use std::{env, fs, fs::File, io::Write};
 
     use super::*;
     use serial_test::serial;
@@ -427,6 +461,29 @@ mod tests {
         load_dotenv_in_env_vars(file_name.as_path(), false).unwrap();
 
         assert_eq!(env::var("VAR"), Ok("value".to_string()));
+    }
+
+    #[cfg(not(feature = "encryption"))]
+    #[test]
+    fn rejects_encrypted_marker_without_age_feature() {
+        let dir = env::temp_dir().join(format!(
+            "envro-no-age-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(".env");
+        fs::write(&path, "SECRET=Encrypted[AGE:b64:dGVzdA==]\n").unwrap();
+        let err = load_dotenv(&path).unwrap_err();
+        assert!(
+            matches!(err, EnvroError::Decrypt { .. }),
+            "expected Decrypt, got {err}"
+        );
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -918,6 +975,26 @@ line4\"",
             vars.get("BLOB").map(String::as_str),
             Some("line1\n\n# not a comment\nline=with=equals\nline4")
         );
+    }
+
+    #[test]
+    fn should_close_multiline_quote_when_closing_line_is_only_backslashes() {
+        let dir = env::temp_dir().join(format!(
+            "envro-bs-close-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(".env");
+        // Closing line is `\\"` (two backslashes + quote) — hits i==0 in line_closes_quote.
+        fs::write(&path, "MSG=\"hi\n\\\\\"").unwrap();
+        let vars = load_dotenv(&path).unwrap();
+        assert_eq!(vars.get("MSG").map(String::as_str), Some("hi\n\\\\"));
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

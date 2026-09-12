@@ -6,13 +6,18 @@ setup:
 maintenance:
     ./scripts/maintenance.sh
 
-# run the tests (same as pre-commit)
+# run the same checks as the local pre-commit hooks
+pre-commit-checks:
+    cargo fmt --check
+    cargo test --all-features -- --test-threads=1
+
+# run the tests
 test:
-    cargo test -- --test-threads=1
+    cargo test --all-features -- --test-threads=1
 
 # run the tests with coverage
 test-coverage:
-    cargo tarpaulin --tests --fail-under 100 --exclude-files 'target/*'
+    cargo tarpaulin --engine Llvm --tests --all-features --fail-under 100 --exclude-files 'target/*'
 
 # format sources and auto-fix clippy lints
 format:
@@ -42,6 +47,3 @@ fix:
 # release: sync main, verify, bump (commitizen), push tags, publish
 release:
     ./scripts/release.sh
-
-
-

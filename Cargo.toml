@@ -20,8 +20,17 @@ include = [
 ]
 
 [dependencies]
-thiserror = "^2.0.20"
+thiserror = "2.0.20"
 envro-derive = { path = "envro-derive", version = "0.12.0" }
+age = { version = "0.11", optional = true, default-features = false }
+base64 = { version = "0.22", optional = true }
+
+[features]
+default = []
+# Decrypt Encrypted[AGE:b64:…] on load; Field::secret / #[envro(secret)]. See docs/encryption.md.
+encryption = ["dep:age", "dep:base64"]
 
 [dev-dependencies]
-serial_test = "^4.0.1"
+serial_test = "4.0.1"
+
+

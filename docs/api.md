@@ -7,7 +7,7 @@ Full rustdoc: [docs.rs/envro](https://docs.rs/envro).
 | Type | Role |
 | --- | --- |
 | [`EnvroVars`](https://docs.rs/envro/latest/envro/type.EnvroVars.html) | `HashMap<String, String>` — parsed env map |
-| [`EnvroError`](https://docs.rs/envro/latest/envro/enum.EnvroError.html) | `File` / `Parse` / `Validation { errors }` |
+| [`EnvroError`](https://docs.rs/envro/latest/envro/enum.EnvroError.html) | `File` / `Parse` / `Validation { errors }` / `Decrypt { key, reason }` (feature `encryption`) |
 | [`ValidationIssue`](https://docs.rs/envro/latest/envro/struct.ValidationIssue.html) | One failure: `{ key, rule, reason }` |
 | [`Schema`](https://docs.rs/envro/latest/envro/struct.Schema.html) | Collection of `(name, Field)` specs |
 | [`Field`](https://docs.rs/envro/latest/envro/struct.Field.html) | Required / `default_value(...)` field + chained rules |
@@ -24,8 +24,8 @@ Full rustdoc: [docs.rs/envro](https://docs.rs/envro).
 
 - `schema() -> Schema`
 - `from_vars(&EnvroVars) -> Result<Self, EnvroError>` — validate/coerce a map as-is (no `${VAR}` expansion)
-- `from_dotenv(&Path) -> Result<Self, EnvroError>` — load `.env` (already expanded), then `from_vars`
-- `from_env() -> Result<Self, EnvroError>` — collect schema keys from process env, expand `${VAR}`, then `from_vars`
+- `from_dotenv(&Path) -> Result<Self, EnvroError>` — load `.env` (decrypt `Encrypted[…]` when feature `encryption`, expand `${VAR}`), then `from_vars`
+- `from_env() -> Result<Self, EnvroError>` — collect schema keys from process env, expand `${VAR}`, then `from_vars` (no decrypt; CI plaintext OK with `secret`)
 
 Supported field types: `String`, `bool`, `i32`, `i64`, `u16`, `u32`, `u64`, `f32`, `f64`, and `Option<T>` of those.
 
@@ -37,12 +37,27 @@ Optional values: `#[envro(default = "...")]` — used when the key is missing or
 
 | Function | Role |
 | --- | --- |
-| [`load_dotenv(path)`](https://docs.rs/envro/latest/envro/fn.load_dotenv.html) | Parse `.env` → `EnvroVars` (no process mutation; expands `${VAR}`) |
+| [`load_dotenv(path)`](https://docs.rs/envro/latest/envro/fn.load_dotenv.html) | Parse `.env` → `EnvroVars` (decrypt when `age`, expand `${VAR}`; no process mutation) |
 | [`load_dotenv_in_env_vars(path, override_existing)`](https://docs.rs/envro/latest/envro/fn.load_dotenv_in_env_vars.html) | Parse and set process env |
 | [`load_dotenv_validated(path, &schema)`](https://docs.rs/envro/latest/envro/fn.load_dotenv_validated.html) | Parse `.env`, then validate |
 | [`expand_vars(&vars)`](https://docs.rs/envro/latest/envro/fn.expand_vars.html) | Expand `${VAR}` across a map (order-independent) |
 | [`validate(&vars, &schema)`](https://docs.rs/envro/latest/envro/fn.validate.html) | Validate any map |
 | [`validate_env(&schema)`](https://docs.rs/envro/latest/envro/fn.validate_env.html) | Validate the live process environment (raw; no expansion) |
+
+### Encryption (`encryption` feature)
+
+```bash
+cargo add envro --features encryption
+```
+
+| Function / rule | Role |
+| --- | --- |
+| `encrypt_value(plaintext, recipients)` | Age-encrypt → `Encrypted[AGE:b64:…]` |
+| `decrypt_value(value, identities)` | Decrypt marker, or return unchanged if plain |
+| `load_dotenv` (and callers) | Decrypt marked values before `${VAR}` expand |
+| `Field::secret()` / `#[envro(secret)]` | In `.env`, must be `Encrypted[AGE:b64:…]`; process env / CI plaintext OK (see [validation.md](./validation.md)) |
+
+Identity: `ENVRO_AGE_IDENTITY_FILE=…` **in the `.env`** (path only; stripped after load) or an explicit path argument on load helpers. New keys: hybrid PQ (`age-keygen -pq` → `age1pq1…`). See [encryption.md](./encryption.md).
 
 ### `load_dotenv_in_env_vars` override
 
@@ -59,5 +74,11 @@ Same `Schema` works on:
 2. A `.env` file — `load_dotenv_validated(path, &schema)`
 3. Process env — `validate_env(&schema)`
 
-See [validation.md](./validation.md) for rules and semantics, [dotenv-format.md](./dotenv-format.md) for the file dialect.
+See [validation.md](./validation.md) for rules and semantics, [dotenv-format.md](./dotenv-format.md) for the file dialect, [encryption.md](./encryption.md) for age secrets.
+
+
+
+
+
+
 

@@ -17,6 +17,6 @@ echo "==> format"
 cargo fmt
 
 echo "==> test"
-cargo test --tests -- --test-threads=1
+cargo test --all-features --tests -- --test-threads=1
 
 echo "==> maintenance done"

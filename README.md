@@ -13,11 +13,14 @@ Env vars for Rust: validate with a composable rule set, load `.env` into `std::e
 - **Defaults** for optional vars — `Field::default_value("…")` / `#[envro(default = "…")]` (required for `Option<T>`)
 - **Compose** derived values with `${VAR}` substitution, then validate each part
 - **Small `.env` dialect** — comments, quotes, multiline, duplicate keys rejected
+- **Encryption** — optional `encryption` feature; `Encrypted[AGE:b64:…]` in `.env` via `ENVRO_AGE_IDENTITY_FILE` + `#[envro(secret)]`; CI can inject plaintext ([docs/encryption.md](docs/encryption.md))
 
 ## Getting started
 
 ```bash
 cargo add envro
+# with encrypted secrets in .env (age):
+cargo add envro --features encryption
 ```
 
 ### Typed app config
@@ -36,7 +39,7 @@ struct Config {
     #[envro(from = "APP_PORT", port)]
     app_port: u16,
 
-    #[envro(from = "DATABASE_URL", min_len = 1, starts_with = "postgres://")]
+    #[envro(from = "DATABASE_URL", min_len = 1, starts_with = "pg://")]
     database_url: String,
 
     #[envro(from = "DB_POOL_SIZE", positive_integer)]
@@ -74,7 +77,7 @@ match Config::from_dotenv(&env_file) {
 
 ### Real-world: CD / process env
 
-In CI/CD and containers you inject process env vars. Validate each knob, and compose derived values with `${VAR}` — `Config::from_env()` expands them the same way as a `.env` file:
+In CI/CD, inject process env vars as plaintext. `#[envro(secret)]` still applies — process plaintext is allowed; only a `.env` file requires `Encrypted[…]`. Compose with `${VAR}` via `Config::from_env()`:
 
 ```rust
 use envro::{Envro, EnvroConfig};
@@ -84,7 +87,7 @@ struct Config {
     #[envro(from = "PG_USER", min_len = 1, max_len = 63, alphanumeric)]
     pg_user: String,
 
-    #[envro(from = "PG_PASS", min_len = 6)]
+    #[envro(from = "PG_PASS", secret, min_len = 6)]
     pg_pass: String,
 
     #[envro(from = "PG_HOST", min_len = 1, max_len = 253)]
@@ -147,8 +150,9 @@ validate_env(&schema)?;
 | Doc | Contents |
 | --- | --- |
 | [docs/api.md](docs/api.md) | Public **APIs and types** (functions, `Schema` / `Field`, derive) |
-| [docs/validation.md](docs/validation.md) | Rule reference, semantics, error inspection |
-| [docs/dotenv-format.md](docs/dotenv-format.md) | `.env` dialect, `${VAR}` substitution, valid/invalid rows |
+| [docs/validation.md](docs/validation.md) | Rule reference (`secret`, …), semantics, error inspection |
+| [docs/dotenv-format.md](docs/dotenv-format.md) | `.env` dialect, `${VAR}`, encrypted values |
+| [docs/encryption.md](docs/encryption.md) | Age secrets, identity file, PQ keys, Compose / CI |
 | [docs/comparison.md](docs/comparison.md) | Comparison with dotenvy, dotenv-ng, and related crates |
 | [docs.rs/envro](https://docs.rs/envro) | Generated rustdoc |
 
@@ -157,10 +161,17 @@ validate_env(&schema)?;
 - **No multi-file layering** — one path per call ([CUE on inheritance](https://cuelang.org/docs/concept/configuration-use-case/#inheritance-based-configuration-languages), [Angular LIFT Flat](https://angular.io/guide/styleguide#flat))
 - **No macros that bake env values into the binary** — `#[derive(Envro)]` encodes types and rules only; values always load at runtime
 
-## TODO
+## Best practices
 
-- encryption
+- **Never commit `.env`** — add `.env` to `.gitignore`; commit `.env-sample` / docs with placeholder values only
+- **Validate at the boundary** — load optional local `.env`, then `Config::from_env()` / `validate_env` so missing or bad vars fail fast
+- **Mark secrets** — `#[envro(secret)]` / `Field::secret()` so plaintext secrets in a `.env` are rejected ([docs/encryption.md](docs/encryption.md))
+- **CD injects plaintext** — CI/containers set process env; do not ship `.env` into prod images
+- **One identity per project** — keep age private keys outside the repo (`ENVRO_AGE_IDENTITY_FILE`); never reuse one key across all apps
+- **Prefer compose over duplication** — build URLs with `${VAR}` and validate parts + the composed value
+- **Fail closed in prod** — required fields, tight `one_of` / length / format rules; defaults only where a safe fallback exists
 
 ## License
 
 [MIT](LICENSE) © 2024-2026 Simone Sanfratello
+

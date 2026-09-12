@@ -352,6 +352,46 @@ Each entry shows a schema snippet and one `.env` value that passes and one that 
   SECRET=0xZZ         # fail: hex
   ```
 
+### Secret (`encryption` feature)
+
+```bash
+cargo add envro --features encryption
+```
+
+- `secret()` — marks the field as a secret. **Source matters:**
+
+  | Source | Plaintext `PG_PASS=s3cr3t` | `Encrypted[AGE:b64:…]` |
+  | --- | --- | --- |
+  | `.env` file (`from_dotenv` / `load_dotenv*`) | **Rejected** | OK → decrypt → then other rules |
+  | Process env (`from_env` / `validate_env` / CI inject) | **OK** | N/A (CI injects plain) |
+
+  After a successful `.env` decrypt, chained rules (`min_len`, …) run on the plaintext. CI does not need age or an identity file.
+
+  ```rust
+  Field::required().secret().min_len(6)
+  ```
+
+  ```env
+  # local .env (feature age)
+  PG_PASS=Encrypted[AGE:b64:…]   # ok
+  PG_PASS=s3cr3t                 # fail: secret
+  ```
+
+  ```yaml
+  # CI — plaintext inject, then Config::from_env()
+  env:
+    PG_PASS: ${{ secrets.PG_PASS }}   # ok with #[envro(secret)]
+  ```
+
+  Derive:
+
+  ```rust
+  #[envro(secret, min_len = 6)]
+  pg_pass: String,
+  ```
+
+  See [encryption.md](./encryption.md).
+
 ### Lists
 
 `list(delim, item)` splits the value on `delim`, trims each part, and applies `item`'s rules to every element. Failing elements report the key as `KEY[i]` where `i` is the 0-based position. `min_items(n)` and `max_items(n)` chain after `list(..)` to bound the number of elements.
@@ -409,4 +449,7 @@ Example message:
 VALIDATION_ERROR PORT[port]: 70000 not in 1..=65535; ADMIN_EMAIL[email]: contains whitespace
 ```
 
-Common `#[envro(...)]` attrs mirror these `Field` rules: flags such as `port`, `boolean`, `integer`, `positive_integer`, `email`, … and keyed forms `min_len = n`, `max_len = n`, `starts_with = "..."`, `one_of("a", "b")`, `int_range(1, 100)`, etc.
+Common `#[envro(...)]` attrs mirror these `Field` rules: flags such as `port`, `boolean`, `integer`, `positive_integer`, `email`, `secret`, … and keyed forms `min_len = n`, `max_len = n`, `starts_with = "..."`, `one_of("a", "b")`, `int_range(1, 100)`, etc.
+
+
+

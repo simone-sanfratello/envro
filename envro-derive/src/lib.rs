@@ -263,7 +263,8 @@ fn parse_envro_attrs(attrs: &[Attribute]) -> SynResult<ParsedAttrs> {
                 | "digits"
                 | "ascii"
                 | "lowercase"
-                | "uppercase" => {
+                | "uppercase"
+                | "secret" => {
                     if meta.input.peek(syn::Token![=]) {
                         return Err(meta.error(format!("{ident} takes no value")));
                     }
@@ -290,6 +291,7 @@ fn parse_envro_attrs(attrs: &[Attribute]) -> SynResult<ParsedAttrs> {
                         "ascii" => "ascii",
                         "lowercase" => "lowercase",
                         "uppercase" => "uppercase",
+                        "secret" => "secret",
                         _ => unreachable!(),
                     };
                     out.rules.push(RuleAttr::Flag(flag));

@@ -15,6 +15,26 @@ ESCAPED="say \"hello\""
 WITH_EQUALS=host=localhost user=admin
 LITERAL=\${HOST}
 HASH=$2a$10$abc
+# with feature "age" — ciphertext until load (see encryption.md)
+# PG_PASS=Encrypted[AGE:b64:…]
+```
+
+## Encrypted values (`encryption` feature)
+
+```bash
+cargo add envro --features encryption
+```
+
+With that feature:
+
+- Values may be `Encrypted[AGE:b64:…]` (age v1 binary, base64).
+- Set `ENVRO_AGE_IDENTITY_FILE=~/path/to.key` in the same file (path only; stripped after load).
+- Decrypt runs in `load_dotenv` after parse and before `${VAR}` expansion.
+- Fields marked `secret` / `#[envro(secret)]` must use the marker in `.env`; process env / CI may inject plaintext (see [validation.md](./validation.md), [encryption.md](./encryption.md)).
+
+```env
+ENVRO_AGE_IDENTITY_FILE=~/.config/envro/my-project.key
+PG_PASS=Encrypted[AGE:b64:…]
 ```
 
 ## Variable substitution
@@ -31,7 +51,7 @@ HASH=$2a$10$abc
 
 ## Where substitution runs
 
-- **`.env` files** — [`load_dotenv`](https://docs.rs/envro/latest/envro/fn.load_dotenv.html) expands after the whole file is parsed.
+- **`.env` files** — [`load_dotenv`](https://docs.rs/envro/latest/envro/fn.load_dotenv.html) parses, decrypts `Encrypted[…]` values when feature `encryption` is on, then expands.
 - **`Config::from_env()`** — expands schema keys collected from the process environment before validate/coerce (same `${VAR}` rules).
 - **`from_vars` / `validate_env`** — do **not** expand; pass already-expanded values, or call [`expand_vars`](https://docs.rs/envro/latest/envro/fn.expand_vars.html) yourself.
 
@@ -84,5 +104,9 @@ Escapes inside quotes: `\"` — a literal `"`; a trailing `\"` on a line therefo
 | `KEY=a` + `KEY=b` (same file) | `PARSE_ERROR ... duplicate variable name: KEY` |
 
 Anything a `.env` file rejects surfaces as `EnvroError::Parse`; unreadable / missing files surface as `EnvroError::File`. See [validation.md](./validation.md) for `EnvroError::Validation`.
+
+
+
+
 
 
